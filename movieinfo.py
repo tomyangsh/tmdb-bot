@@ -27,7 +27,10 @@ async def send_pic(event):
             if crew['job'] == 'Director':
                 director = crew['name']
                 break
-    info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**\n\n'+tmdb_info['overview']+'\n\n#导演 '+director+'\n#类型 #'+tmdb_info['genres'][0]['name']+' #'+tmdb_info['genres'][1]['name']+'\n#国家 #'+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n#语言 #'+tmdb_info['spoken_languages'][0]['name']+'\n#上映日期 '+tmdb_info['release_date']+'\n#片长 '+str(tmdb_info['runtime'])+'分钟\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
+    if len(tmdb_info['genres']) >= 2:
+        info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**\n\n'+tmdb_info['overview']+'\n\n#导演 '+director+'\n#类型 #'+tmdb_info['genres'][0]['name']+' #'+tmdb_info['genres'][1]['name']+'\n#国家 #'+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n#语言 #'+tmdb_info['spoken_languages'][0]['name']+'\n#上映日期 '+tmdb_info['release_date']+'\n#片长 '+str(tmdb_info['runtime'])+'分钟\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
+    else:
+        info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**\n\n'+tmdb_info['overview']+'\n\n#导演 '+director+'\n#类型 #'+tmdb_info['genres'][0]['name']+'\n#国家 #'+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n#语言 #'+tmdb_info['spoken_languages'][0]['name']+'\n#上映日期 '+tmdb_info['release_date']+'\n#片长 '+str(tmdb_info['runtime'])+'分钟\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
     temp_dir = tempfile.TemporaryDirectory()
     save_path = temp_dir.name+'/'+str(tmdb_id)+'.jpg'
     with urllib.request.urlopen(poster) as response, open(save_path, 'wb') as out_file:
