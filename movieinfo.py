@@ -60,7 +60,7 @@ async def send_question(event):
         image_url = 'https://www.themoviedb.org/t/p/original'+tmdb_info['poster_path']
     image = BytesIO(requests.get(image_url).content)
     try:
-        async with bot.conversation(event.message.chat_id, timeout=60) as conv:
+        async with bot.conversation(event.message.chat_id, exclusive=False, timeout=60) as conv:
             question = await conv.send_file(image, caption=caption1)
             answered = False
             while True:
