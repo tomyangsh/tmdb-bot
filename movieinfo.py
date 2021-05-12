@@ -45,7 +45,11 @@ async def send_question(event):
     id = str(random.choice(tmdb_id))
     tmdb_info = requests.get('https://api.themoviedb.org/3/movie/'+id+'?api_key='+tmdb_key+'&language=zh-CN').json()
     image_list = requests.get('https://api.themoviedb.org/3/movie/'+id+'/images?api_key='+tmdb_key).json()['backdrops']
-    caption1 = sender.first_name+' 问，这部'+tmdb_info['release_date'][:4]+'年的'+tmdb_info['genres'][0]['name']+'影片的标题是？(60秒内作答有效)'
+    try:
+        sender_name = sender.first_name
+    except:
+        sender_name = 'BOSS'
+    caption1 = sender_name+' 问，这部'+tmdb_info['release_date'][:4]+'年的'+tmdb_info['genres'][0]['name']+'影片的标题是？(60秒内作答有效)'
     print(tmdb_info['title'])
     title_list = []
     title_info = requests.get('https://api.themoviedb.org/3/movie/'+id+'/alternative_titles?api_key='+tmdb_key+'&country=CN').json()['titles']
@@ -65,11 +69,15 @@ async def send_question(event):
             answered = False
             while True:
                 response = await conv.get_response()
+                try:
+                    responder_name = response.sender.first_name
+                except:
+                    responder_name = 'BOSS'
                 answer = response.text
                 for a in title_list:
                     if a != '':
                         if re.match(a[:5], answer, re.IGNORECASE):
-                            caption2 = response.sender.first_name+' 回答正确！\n**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**\n'+tmdb_info['overview']
+                            caption2 = responder_name+' 回答正确！\n**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**\n'+tmdb_info['overview']
                             await bot.send_message(event.message.chat_id, caption2, reply_to=response)
                             answered = True
                             break
