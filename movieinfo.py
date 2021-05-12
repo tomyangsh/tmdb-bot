@@ -67,11 +67,12 @@ async def send_question(event):
                 response = await conv.get_response()
                 answer = response.text
                 for a in title_list:
-                    if re.match(a[:5], answer, re.IGNORECASE):
-                        caption2 = response.sender.first_name+' 回答正确！\n**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**\n'+tmdb_info['overview']
-                        await bot.send_message(event.message.chat_id, caption2, reply_to=response)
-                        answered = True
-                        break
+                    if a != '':
+                        if re.match(a[:5], answer, re.IGNORECASE):
+                            caption2 = response.sender.first_name+' 回答正确！\n**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**\n'+tmdb_info['overview']
+                            await bot.send_message(event.message.chat_id, caption2, reply_to=response)
+                            answered = True
+                            break
                 if answered:
                     break
     except Exception as e:
