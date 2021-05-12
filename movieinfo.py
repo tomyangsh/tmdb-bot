@@ -12,9 +12,8 @@ app_hash = os.getenv("APP_HASH")
 tmdb_key = 'b729fb42b650d53389fb933b99f4b072'
 
 tmdb_id = []
-trakt_data = requests.get('https://api.trakt.tv/users/tomyangsh/collection/movies', headers={'trakt-api-key': '4fb92befa9b5cf6c00c1d3fecbd96f8992c388b4539f5ed34431372bbee1eca8'}).json()
-for item in trakt_data:
-    tmdb_id.append(item['movie']['ids']['tmdb'])
+for item in open('movieid'):
+    tmdb_id.append(item.strip("\n"))
 
 bot = TelegramClient('bot', app_id, app_hash).start(bot_token=token)
 
@@ -35,9 +34,9 @@ async def send_pic(event):
                 director = crew['name']
                 break
     if len(tmdb_info['genres']) >= 2:
-        info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**\n\n'+tmdb_info['overview']+'\n\n#导演 '+director+'\n#类型 #'+tmdb_info['genres'][0]['name']+' #'+tmdb_info['genres'][1]['name']+'\n#国家 #'+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n#语言 #'+tmdb_info['spoken_languages'][0]['name']+'\n#上映日期 '+tmdb_info['release_date']+'\n#片长 '+str(tmdb_info['runtime'])+'分钟\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
+        info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**\n\n'+tmdb_info['overview']+'\n\n导演 '+director+'\n类型 #'+tmdb_info['genres'][0]['name']+' #'+tmdb_info['genres'][1]['name']+'\n国家 #'+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 #'+tmdb_info['spoken_languages'][0]['name']+'\n上映日期 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
     else:
-        info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**\n\n'+tmdb_info['overview']+'\n\n#导演 '+director+'\n#类型 #'+tmdb_info['genres'][0]['name']+'\n#国家 #'+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n#语言 #'+tmdb_info['spoken_languages'][0]['name']+'\n#上映日期 '+tmdb_info['release_date']+'\n#片长 '+str(tmdb_info['runtime'])+'分钟\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
+        info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**\n\n'+tmdb_info['overview']+'\n\n导演 '+director+'\n类型 #'+tmdb_info['genres'][0]['name']+'\n国家 #'+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 #'+tmdb_info['spoken_languages'][0]['name']+'\n上映日期 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
     await bot.send_file(chat_id, poster, caption=info)
 
 @bot.on(events.NewMessage(pattern=r'^出题$'))
@@ -49,11 +48,12 @@ async def send_question(event):
     caption1 = sender.first_name+' 问，这部'+tmdb_info['release_date'][:4]+'年的'+tmdb_info['genres'][0]['name']+'影片的标题是？(60秒内作答有效)'
     print(tmdb_info['title'])
     title_list = []
-    title_list.append(tmdb_info['title'])
-    title_list.append(tmdb_info['original_title'])
     title_info = requests.get('https://api.themoviedb.org/3/movie/'+id+'/alternative_titles?api_key='+tmdb_key+'&country=CN').json()['titles']
     for t in title_info:
         title_list.append(t['title'])
+    translation_info = requests.get('https://api.themoviedb.org/3/movie/'+id+'/translations?api_key='+tmdb_key+'&country=CN').json()['translations']
+    for t in translation_info:
+        title_list.append(t['data']['title'])
     try:
         image_url = 'https://www.themoviedb.org/t/p/original'+random.choice(image_list)['file_path']
     except:
