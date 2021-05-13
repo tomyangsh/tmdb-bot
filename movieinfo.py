@@ -17,7 +17,7 @@ for item in open('movieid'):
 
 bot = TelegramClient('bot', app_id, app_hash).start(bot_token=token)
 
-@bot.on(events.NewMessage(pattern=r'^/m'))
+@bot.on(events.NewMessage(pattern=r'^/m\s'))
 async def send_pic(event):
     chat_id = event.message.chat_id
     msg = re.sub(r'/m\s*', '', event.message.text)
