@@ -22,7 +22,11 @@ async def send_pic(event):
     chat_id = event.message.chat_id
     msg = re.sub(r'/m\s*', '', event.message.text)
     search_url = 'https://api.themoviedb.org/3/search/movie?api_key='+tmdb_key+'&language=zh-CN&query='+msg
-    tmdb_id = requests.get(search_url).json()['results'][0]['id']
+    try:
+        tmdb_id = requests.get(search_url).json()['results'][0]['id']
+    except:
+        await bot.send_message(chat_id, '好像没搜到，换个名字试试')
+        return None
     tmdb_info = requests.get('https://api.themoviedb.org/3/movie/'+str(tmdb_id)+'?api_key='+tmdb_key+'&language=zh-CN').json()
     imdb_id = requests.get('https://api.themoviedb.org/3/movie/'+str(tmdb_id)+'/external_ids?api_key='+tmdb_key).json()['imdb_id']
     imdb_rating = re.search(r'"ratingValue">\d\.\d', requests.get('https://www.imdb.com/title/'+imdb_id+'/').text).group()[-3:]
