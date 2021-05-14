@@ -89,9 +89,8 @@ async def send_question(event):
         image_url = 'https://www.themoviedb.org/t/p/original'+tmdb_info['poster_path']
     image = BytesIO(requests.get(image_url, headers=header).content)
     try:
-        async with bot.conversation(event.message.chat_id, exclusive=False, timeout=60) as conv:
+        async with bot.conversation(event.message.chat_id, exclusive=False, total_timeout=60) as conv:
             question = await conv.send_file(image, caption=caption1)
-            answered = False
             while True:
                 response = await conv.get_response()
                 try:
@@ -104,13 +103,9 @@ async def send_question(event):
                         if re.match(a[:5], answer, re.IGNORECASE):
                             caption2 = responder_name+' 回答正确！\n**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')** '+'[链接]('+info_url+')'
                             await bot.send_message(event.message.chat_id, caption2, reply_to=response)
-                            answered = True
-                            break
-                if answered:
-                    break
+                            return
     except Exception as e:
         print(e)
-    if answered is False:
         await bot.edit_message(question, '答题超时，答案：'+tmdb_info['title'])
 
 if __name__ == '__main__':
