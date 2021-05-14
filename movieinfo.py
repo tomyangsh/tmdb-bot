@@ -10,7 +10,7 @@ token = os.getenv("TOKEN")
 app_id = int(os.getenv("APP_ID"))
 app_hash = os.getenv("APP_HASH")
 tmdb_key = 'b729fb42b650d53389fb933b99f4b072'
-header = {'user-agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0'}
+header = {'User-Agent': 'Kodi Movie scraper by Team Kodi'}
 
 tmdb_id = []
 for item in open('movieid'):
