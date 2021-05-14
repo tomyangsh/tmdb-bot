@@ -23,7 +23,11 @@ bot = TelegramClient('bot', app_id, app_hash).start(bot_token=token)
 async def send_pic(event):
     chat_id = event.message.chat_id
     msg = re.sub(r'/m\s*', '', event.message.text)
-    search_url = 'https://api.themoviedb.org/3/search/movie?api_key='+tmdb_key+'&language=zh-CN&query='+msg
+    if re.search(r'\s\d*$', msg):
+        search_query = re.match(r'.*\s', msg).group()[:-1]+'&year='+re.search(r'\s\d*$', msg).group()
+    else:
+        search_query = msg
+    search_url = 'https://api.themoviedb.org/3/search/movie?api_key='+tmdb_key+'&language=zh-CN&query='+search_query
     try:
         tmdb_id = requests.get(search_url).json()['results'][0]['id']
     except:
