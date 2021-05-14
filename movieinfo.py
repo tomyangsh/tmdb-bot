@@ -57,6 +57,7 @@ async def send_question(event):
     print(tmdb_info['title'])
     title_list = []
     title_info = requests.get('https://api.themoviedb.org/3/movie/'+id+'/alternative_titles?api_key='+tmdb_key+'&country=CN').json()['titles']
+    info_url = 'https://www.themoviedb.org/movie/'+str(tmdb_info['id'])   
     for t in title_info:
         title_list.append(t['title'])
     translation_info = requests.get('https://api.themoviedb.org/3/movie/'+id+'/translations?api_key='+tmdb_key+'&country=CN').json()['translations']
@@ -81,7 +82,7 @@ async def send_question(event):
                 for a in title_list:
                     if a != '':
                         if re.match(a[:5], answer, re.IGNORECASE):
-                            caption2 = responder_name+' 回答正确！\n**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**\n'+tmdb_info['overview']
+                            caption2 = responder_name+' 回答正确！\n**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')** '+'[链接]('+info_url+')'
                             await bot.send_message(event.message.chat_id, caption2, reply_to=response)
                             answered = True
                             break
