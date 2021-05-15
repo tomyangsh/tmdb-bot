@@ -100,7 +100,7 @@ async def send_question(event):
                 answer = response.text
                 for a in title_list:
                     if a != '':
-                        if re.match(a[:5], answer, re.IGNORECASE):
+                        if re.match(re.escape(a[:5]), answer, re.IGNORECASE):
                             caption2 = responder_name+' 回答正确！\n**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')** '+'[链接]('+info_url+')'
                             await bot.send_message(event.message.chat_id, caption2, reply_to=response)
                             return
