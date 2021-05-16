@@ -16,6 +16,11 @@ tmdb_id = []
 for item in open('movieid'):
     tmdb_id.append(item.strip("\n"))
 
+langcode = {}
+for line in open('langcode'):
+    key, value = line.split(' ')
+    langcode[key] = value.strip('\n')
+
 def get_translation(text):
     result = requests.get('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-cn&&dt=t&q='+requests.utils.quote(text)).json()[0][0][0]
     return result
@@ -58,10 +63,11 @@ async def send_pic(event):
                 if crew['job'] == 'Director':
                     director = get_translation(crew['name'])
                     break
+        language = langcode[tmdb_info['original_language']]
         if len(tmdb_info['genres']) >= 2:
-            info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n导演 '+director+'\n类型 #'+tmdb_info['genres'][0]['name']+' #'+tmdb_info['genres'][1]['name']+'\n国家 #'+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 #'+tmdb_info['spoken_languages'][0]['name']+'\n上映 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
+            info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n导演 '+director+'\n类型 #'+tmdb_info['genres'][0]['name']+' #'+tmdb_info['genres'][1]['name']+'\n国家 '+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 '+language+'\n上映 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
         else:
-            info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n导演 '+director+'\n类型 #'+tmdb_info['genres'][0]['name']+'\n国家 #'+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 #'+tmdb_info['spoken_languages'][0]['name']+'\n上映 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
+            info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n导演 '+director+'\n类型 #'+tmdb_info['genres'][0]['name']+'\n国家 '+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 '+language+'\n上映 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
         await bot.send_file(chat_id, poster, caption=info)
     except:
         await bot.send_message(chat_id, '此片信息不完整，详见：[链接](https://www.themoviedb.org/movie/'+str(tmdb_id)+')')
