@@ -16,8 +16,11 @@ tmdb_id = []
 for item in open('movieid'):
     tmdb_id.append(item.strip("\n"))
 
-bot = TelegramClient('bot', app_id, app_hash).start(bot_token=token)
+def get_translation(text):
+    result = requests.get('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-cn&&dt=t&q='+requests.utils.quote(text)).json()[0][0][0]
+    return result
 
+bot = TelegramClient('bot', app_id, app_hash).start(bot_token=token)
 
 @bot.on(events.NewMessage(pattern=r'^/m\s'))
 async def send_pic(event):
@@ -53,7 +56,7 @@ async def send_pic(event):
         tmdb_credits = requests.get('https://api.themoviedb.org/3/movie/'+str(tmdb_id)+'/credits?api_key='+tmdb_key).json()
         for crew in tmdb_credits['crew']:
                 if crew['job'] == 'Director':
-                    director = crew['name']
+                    director = get_translation(crew['name'])
                     break
         if len(tmdb_info['genres']) >= 2:
             info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n导演 '+director+'\n类型 #'+tmdb_info['genres'][0]['name']+' #'+tmdb_info['genres'][1]['name']+'\n国家 #'+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 #'+tmdb_info['spoken_languages'][0]['name']+'\n上映 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
