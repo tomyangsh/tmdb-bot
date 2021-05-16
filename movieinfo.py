@@ -61,15 +61,20 @@ async def send_pic(event):
         tmdb_credits = requests.get('https://api.themoviedb.org/3/movie/'+str(tmdb_id)+'/credits?api_key='+tmdb_key).json()
         for crew in tmdb_credits['crew']:
                 if crew['job'] == 'Director':
-                    director = get_translation(crew['name'])
+                    director = re.sub('（.*）', '', get_translation(crew['name']))
                     break
         language = langcode[tmdb_info['original_language']]
-        if len(tmdb_info['genres']) >= 2:
-            info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n导演 '+director+'\n类型 #'+tmdb_info['genres'][0]['name']+' #'+tmdb_info['genres'][1]['name']+'\n国家 '+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 '+language+'\n上映 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
-        else:
-            info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n导演 '+director+'\n类型 #'+tmdb_info['genres'][0]['name']+'\n国家 '+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 '+language+'\n上映 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
+        actors = re.sub('（.*）', '', get_translation(tmdb_credits['cast'][0]['name']))+'\n'
+        for item in tmdb_credits['cast'][1:5]:
+            actor = re.sub('（.*）', '', get_translation(item['name']))
+            actors = actors+'         '+actor+'\n'
+        genres = ''
+        for genre in tmdb_info['genres'][:2]:
+            genres = genres+' #'+genre['name']
+            info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n导演 '+director+'\n类型'+genres+'\n国家 '+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 '+language+'\n上映 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n演员 '+actors+'\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
         await bot.send_file(chat_id, poster, caption=info)
-    except:
+    except Exception as e:
+        print(e)
         await bot.send_message(chat_id, '此片信息不完整，详见：[链接](https://www.themoviedb.org/movie/'+str(tmdb_id)+')')
 
 @bot.on(events.NewMessage(pattern=r'^出题$|^出題$'))
