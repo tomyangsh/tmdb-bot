@@ -9,6 +9,7 @@ from country_list import countries_for_language
 token = os.getenv("TOKEN")
 app_id = int(os.getenv("APP_ID"))
 app_hash = os.getenv("APP_HASH")
+deepl_key = os.getenv("DEEPL_KEY")
 tmdb_key = 'b729fb42b650d53389fb933b99f4b072'
 header = {'User-Agent': 'Kodi Movie scraper by Team Kodi'}
 
@@ -29,7 +30,9 @@ status_dic = {
         }
 
 def get_translation(text):
-    result = requests.get('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-cn&&dt=t&q='+requests.utils.quote(text)).json()[0][0][0]
+    url = 'https://api-free.deepl.com/v2/translate'
+    payload = {'auth_key': deepl_key, 'text': text, 'target_lang': 'ZH'}
+    result = requests.post(url, data=payload).json()['translations'][0]['text']
     return result
 
 bot = TelegramClient('bot', app_id, app_hash).start(bot_token=token)
