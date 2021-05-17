@@ -28,7 +28,7 @@ def get_translation(text):
 bot = TelegramClient('bot', app_id, app_hash).start(bot_token=token)
 
 @bot.on(events.NewMessage(pattern=r'^/m\s'))
-async def send_pic(event):
+async def movie_info(event):
     chat_id = event.message.chat_id
     msg = re.sub(r'/m\s*', '', event.message.text)
     if re.search(r'\s\d*$', msg):
@@ -76,6 +76,57 @@ async def send_pic(event):
     except Exception as e:
         print(e)
         await bot.send_message(chat_id, '此片信息不完整，详见：[链接](https://www.themoviedb.org/movie/'+str(tmdb_id)+')')
+
+@bot.on(events.NewMessage(pattern=r'^/t\s'))
+async def tv_info(event):
+    chat_id = event.message.chat_id
+    msg = re.sub(r'/m\s*', '', event.message.text)
+    if re.search(r'\s\d*$', msg):
+        search_query = re.match(r'.*\s', msg).group()[:-1]+'&year='+re.search(r'\s\d*$', msg).group()
+    else:
+        search_query = msg
+    search_url = 'https://api.themoviedb.org/3/search/tv?api_key='+tmdb_key+'&language=zh-CN&query='+search_query
+    try:
+        tmdb_id = requests.get(search_url).json()['results'][0]['id']
+    except:
+        await bot.send_message(chat_id, '好像没搜到，换个名字试试')
+        return None
+    try:
+        tmdb_info = requests.get('https://api.themoviedb.org/3/tv/'+str(tmdb_id)+'?api_key='+tmdb_key+'&language=zh-CN').json()
+        trailer_list = requests.get('https://api.themoviedb.org/3/tv/'+str(tmdb_id)+'/videos?api_key='+tmdb_key).json()['results']
+        trailer_url = None
+        for i in trailer_list:
+            if i['site'] == 'YouTube':
+                if i['type'] == 'Trailer':
+                    trailer_url = 'https://www.youtube.com/watch?v='+i['key']
+                    break
+        if trailer_url is None:
+            trailer = ''
+        else:
+            trailer = ' [预告片]('+trailer_url+')'
+        imdb_id = requests.get('https://api.themoviedb.org/3/movie/'+str(tmdb_id)+'/external_ids?api_key='+tmdb_key).json()['imdb_id']
+        imdb_rating = re.search(r'"ratingValue">\d\.\d', requests.get('https://www.imdb.com/title/'+imdb_id+'/').text).group()[-3:]
+        poster = BytesIO(requests.get('https://www.themoviedb.org/t/p/w600_and_h900_bestv2'+tmdb_info['poster_path'], headers=header).content)
+        countries = dict(countries_for_language('zh_CN'))
+        tmdb_credits = requests.get('https://api.themoviedb.org/3/movie/'+str(tmdb_id)+'/credits?api_key='+tmdb_key).json()
+        for crew in tmdb_credits['crew']:
+                if crew['job'] == 'Creator':
+                    creator = ' '+re.sub('（.*）', '', get_translation(crew['name']))
+        actors = re.sub('（.*）', '', get_translation(tmdb_credits['cast'][0]['name']))+'\n'
+        for item in tmdb_credits['cast'][1:5]:
+            actor = re.sub('（.*）', '', get_translation(item['name']))
+            actors = actors+'         '+actor+'\n'
+        genres = ''
+        for genre in tmdb_info['genres'][:2]:
+            genres = genres+' #'+genre['name']
+            seasons = ''
+            for season in tmdb_info['seasons']:
+                seasons = seasons+season['name']+' - 共'+season['episode_count']+'集'
+            info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n创作'+creator+'\n类型'+genres+'\n国家 '+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n网络 '+tmdb_info['networks']['name']+'\n首播 '+tmdb_info['first_air_date']+'\n集长 '+str(tmdb_info['episode_run_time'])+'分钟\n演员 '+actors+'\n分季概况：\n'+seasons+'\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
+        await bot.send_file(chat_id, poster, caption=info)
+    except Exception as e:
+        print(e)
+        await bot.send_message(chat_id, '此剧信息不完整，详见：[链接](https://www.themoviedb.org/tv/'+str(tmdb_id)+')')
 
 @bot.on(events.NewMessage(pattern=r'^出题$|^出題$'))
 async def send_question(event):
