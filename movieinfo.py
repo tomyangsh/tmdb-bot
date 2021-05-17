@@ -89,7 +89,7 @@ async def tv_info(event):
     chat_id = event.message.chat_id
     msg = re.sub(r'/t\s*', '', event.message.text)
     if re.search(r'\s\d*$', msg):
-        search_query = re.match(r'.*\s', msg).group()[:-1]+'&year='+re.search(r'\s\d*$', msg).group()
+        search_query = re.match(r'.*\s', msg).group()[:-1]+'&first_air_date_year='+re.search(r'\s\d*$', msg).group()
     else:
         search_query = msg
     search_url = 'https://api.themoviedb.org/3/search/tv?api_key='+tmdb_key+'&language=zh-CN&query='+search_query
@@ -130,7 +130,7 @@ async def tv_info(event):
         for season in tmdb_info['seasons']:
             seasons = seasons+season['name']+' - 共'+str(season['episode_count'])+'集\n'
         status = status_dic[tmdb_info['status']]
-        info = '**'+tmdb_info['name']+' '+tmdb_info['original_name']+' ('+tmdb_info['first_air_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n创作'+creator+'\n类型'+genres+'\n国家 '+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n网络 #'+tmdb_info['networks'][0]['name']+'\n状况 '+status+'\n首播 '+tmdb_info['first_air_date']+'\n集长 '+str(tmdb_info['episode_run_time'][0])+'分钟\n演员 '+actors+'\n分季概况：\n'+seasons+'\n#Trakt_'+trakt_rating[0]+' '+trakt_rating
+        info = '**'+tmdb_info['name']+' '+tmdb_info['original_name']+' ('+tmdb_info['first_air_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n创作'+creator+'\n类型'+genres+'\n国家 '+countries[tmdb_info['origin_country'][0]]+'\n网络 #'+tmdb_info['networks'][0]['name']+'\n状况 '+status+'\n首播 '+tmdb_info['first_air_date']+'\n集长 '+str(tmdb_info['episode_run_time'][0])+'分钟\n演员 '+actors+'\n分季概况：\n'+seasons+'\n#Trakt_'+trakt_rating[0]+' '+trakt_rating
         await bot.send_file(chat_id, poster, caption=info)
     except Exception as e:
         traceback.print_exc()
