@@ -87,9 +87,10 @@ async def movie_info(event):
         poster = BytesIO(requests.get('https://www.themoviedb.org/t/p/w600_and_h900_bestv2'+tmdb_info['poster_path'], headers=header).content)
         countries = dict(countries_for_language('zh_CN'))
         tmdb_credits = requests.get('https://api.themoviedb.org/3/movie/'+str(tmdb_id)+'/credits?api_key='+tmdb_key).json()
+        director = ''
         for crew in tmdb_credits['crew']:
                 if crew['job'] == 'Director':
-                    director = re.sub('（.*）', '', get_translation(crew['name']))
+                    director = '\n导演 '+re.sub('（.*）', '', get_translation(crew['name']))
                     break
         language = langcode[tmdb_info['original_language']]
         actors = re.sub('（.*）', '', get_translation(tmdb_credits['cast'][0]['name']))+'\n'
@@ -99,7 +100,7 @@ async def movie_info(event):
         genres = ''
         for genre in tmdb_info['genres'][:2]:
             genres = genres+' #'+genre['name']
-        info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n导演 '+director+'\n类型'+genres+'\n国家 '+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 '+language+'\n上映 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n演员 '+actors+imdb_info
+        info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n'+director+'\n类型'+genres+'\n国家 '+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 '+language+'\n上映 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n演员 '+actors+imdb_info
         await bot.send_file(chat_id, poster, caption=info)
     except Exception as e:
         traceback.print_exc()
@@ -195,6 +196,48 @@ async def actor_info(event):
     info = tmdb_info['name']+age_info+'\n近期作品：'+recent_credits
     await bot.send_file(event.chat_id, profile, caption=info)
 
+@bot.on(events.NewMessage(pattern=r'^/d\s'))
+async def actor_info(event):
+    search_query = re.sub(r'/d\s*', '', event.message.text)
+    search_url = 'https://api.themoviedb.org/3/search/person?api_key='+tmdb_key+'&include_adult=true&query='+search_query
+    try:
+        tmdb_id = requests.get(search_url).json()['results'][0]['id']
+    except:
+        await bot.send_message(event.chat_id, '好像没搜到，换个名字试试')
+        return None
+    tmdb_info = requests.get('https://api.themoviedb.org/3/person/'+str(tmdb_id)+'?api_key='+tmdb_key).json()
+    profile = BytesIO(requests.get('https://www.themoviedb.org/t/p/original'+tmdb_info['profile_path'], headers=header).content)
+    try:
+        birthday = tmdb_info['birthday']
+        deathday = tmdb_info['deathday']
+        if deathday:
+            age = str(int(deathday[:4]) - int(birthday[:4]))
+            age_info = '\n出生 '+birthday+'\n去世 '+deathday+' ('+age+'岁)\n'
+        else:
+            age = str(calculateAge(birthday))
+            age_info = '\n出生 '+birthday+' ('+age+'岁)\n'
+    except:
+        age_info = '\n'
+    credits_info = requests.get('https://api.themoviedb.org/3/person/'+str(tmdb_id)+'/combined_credits?language=zh-cn&api_key='+tmdb_key).json()['crew']
+    for i in credits_info:
+        if i.get('release_date') is None:
+            if i.get('first_air_date') is None:
+                credits_info.remove(i)
+                continue
+        if i.get('release_date') == '':
+            credits_info.remove(i)
+            continue
+        if i.get('first_air_date') == '':
+            credits_info.remove(i)
+            continue
+        if i.get('job') is not 'Director':
+            credits_info.remove(i)
+    credits_info.sort(reverse=True, key=sort_key)
+    recent_credits = ''
+    for c in credits_info[:10]:
+        recent_credits = recent_credits+'\n'+c.get('release_date', '')[:4]+c.get('first_air_date', '')[:4]+' - '+c.get('title', '')+c.get('name', '')
+    info = tmdb_info['name']+age_info+'\n近期作品：'+recent_credits
+    await bot.send_file(event.chat_id, profile, caption=info)
 
 @bot.on(events.NewMessage(pattern=r'^出题$|^出題$'))
 async def send_question(event):
