@@ -160,7 +160,7 @@ async def actor_info(event):
     try:
         tmdb_id = requests.get(search_url).json()['results'][0]['id']
     except:
-        await bot.send_message(chat_id, '好像没搜到，换个名字试试')
+        await bot.send_message(event.chat_id, '好像没搜到，换个名字试试')
         return None
     tmdb_info = requests.get('https://api.themoviedb.org/3/person/'+str(tmdb_id)+'?api_key='+tmdb_key).json()
     profile = BytesIO(requests.get('https://www.themoviedb.org/t/p/original'+tmdb_info['profile_path'], headers=header).content)
