@@ -59,7 +59,7 @@ async def movie_info(event):
         search_query = re.match(r'.*\s', msg).group()[:-1]+'&year='+re.search(r'\s\d*$', msg).group()
     else:
         search_query = msg
-    search_url = 'https://api.themoviedb.org/3/search/movie?api_key='+tmdb_key+'&language=zh-CN&query='+search_query
+    search_url = 'https://api.themoviedb.org/3/search/movie?api_key='+tmdb_key+'&language=zh-CN&include_adult=true&query='+search_query
     try:
         tmdb_id = requests.get(search_url).json()['results'][0]['id']
     except:
@@ -109,7 +109,7 @@ async def tv_info(event):
         search_query = re.match(r'.*\s', msg).group()[:-1]+'&first_air_date_year='+re.search(r'\s\d*$', msg).group()
     else:
         search_query = msg
-    search_url = 'https://api.themoviedb.org/3/search/tv?api_key='+tmdb_key+'&language=zh-CN&query='+search_query
+    search_url = 'https://api.themoviedb.org/3/search/tv?api_key='+tmdb_key+'&language=zh-CN&include_adult=true&query='+search_query
     try:
         tmdb_id = requests.get(search_url).json()['results'][0]['id']
     except:
@@ -156,7 +156,7 @@ async def tv_info(event):
 @bot.on(events.NewMessage(pattern=r'^/a\s'))
 async def actor_info(event):
     search_query = re.sub(r'/a\s*', '', event.message.text)
-    search_url = 'https://api.themoviedb.org/3/search/person?api_key='+tmdb_key+'&query='+search_query
+    search_url = 'https://api.themoviedb.org/3/search/person?api_key='+tmdb_key+'&include_adult=true&query='+search_query
     try:
         tmdb_id = requests.get(search_url).json()['results'][0]['id']
     except:
