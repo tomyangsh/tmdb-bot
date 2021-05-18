@@ -1,6 +1,8 @@
-import requests, re, json, os, urllib.request, shutil, random, traceback
+import requests, re, json, os, urllib.request, shutil, random, traceback, datetime
 
 from io import BytesIO
+
+from datetime import date
 
 from telethon import TelegramClient, events
 
@@ -34,6 +36,18 @@ def get_translation(text):
     payload = {'auth_key': deepl_key, 'text': text, 'target_lang': 'ZH'}
     result = requests.post(url, data=payload).json()['translations'][0]['text']
     return result
+
+def calculateAge(birthday):
+    today = date.today()
+    age = today.year - int(birthday[:4]) - ((today.month, today.day) < (int(birthday[5:7]), int(birthday[8:])))
+    return age
+
+def sort_key(e):
+    if e.get('release_date') is not None:
+        year = e.get('release_date')[:4]
+    else:
+        year = e.get('first_air_date')[:4]
+    return year
 
 bot = TelegramClient('bot', app_id, app_hash).start(bot_token=token)
 
@@ -138,6 +152,45 @@ async def tv_info(event):
     except Exception as e:
         traceback.print_exc()
         await bot.send_message(chat_id, '此剧信息不完整，详见：[链接](https://www.themoviedb.org/tv/'+str(tmdb_id)+')')
+
+@bot.on(events.NewMessage(pattern=r'^/a\s'))
+async def actor_info(event):
+    search_query = re.sub(r'/a\s*', '', event.message.text)
+    search_url = 'https://api.themoviedb.org/3/search/person?api_key='+tmdb_key+'&query='+search_query
+    try:
+        tmdb_id = requests.get(search_url).json()['results'][0]['id']
+    except:
+        await bot.send_message(chat_id, '好像没搜到，换个名字试试')
+        return None
+    tmdb_info = requests.get('https://api.themoviedb.org/3/person/'+str(tmdb_id)+'?api_key='+tmdb_key).json()
+    profile = BytesIO(requests.get('https://www.themoviedb.org/t/p/original'+tmdb_info['profile_path'], headers=header).content)
+    try:
+        birthday = tmdb_info['birthday']
+        deathday = tmdb_info['deathday']
+        if deathday:
+            age = str(int(deathday[:4]) - int(birthday[:4]))
+            age_info = '\n出生 '+birthday+'\n去世 '+deathday+' ('+age+'岁)\n'
+        else:
+            age = str(calculateAge(birthday))
+            age_info = '\n出生 '+birthday+' ('+age+'岁)\n'
+    except:
+        age_info = '\n'
+    credits_info = requests.get('https://api.themoviedb.org/3/person/'+str(tmdb_id)+'/combined_credits?language=zh-cn&api_key='+tmdb_key).json()['cast']
+    for i in credits_info:
+        if i.get('release_date') is None:
+            if i.get('first_air_date') is None:
+                credits_info.remove(i)
+        if i.get('release_date') == '':
+            credits_info.remove(i)
+        if i.get('first_air_date') == '':
+            credits_info.remove(i)
+    credits_info.sort(reverse=True, key=sort_key)
+    recent_credits = ''
+    for c in credits_info[:10]:
+        recent_credits = recent_credits+'\n'+c.get('release_date', '')[:4]+c.get('first_air_date', '')[:4]+' - '+c.get('title', '')+c.get('name', '')
+    info = tmdb_info['name']+age_info+'\n近期作品：'+recent_credits
+    await bot.send_file(event.chat_id, profile, caption=info)
+
 
 @bot.on(events.NewMessage(pattern=r'^出题$|^出題$'))
 async def send_question(event):
