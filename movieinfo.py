@@ -78,8 +78,12 @@ async def movie_info(event):
             trailer = ''
         else:
             trailer = ' [预告片]('+trailer_url+')'
-        imdb_id = requests.get('https://api.themoviedb.org/3/movie/'+str(tmdb_id)+'/external_ids?api_key='+tmdb_key).json()['imdb_id']
-        imdb_rating = re.search(r'"ratingValue">\d\.\d', requests.get('https://www.imdb.com/title/'+imdb_id+'/').text).group()[-3:]
+        try:
+            imdb_id = requests.get('https://api.themoviedb.org/3/movie/'+str(tmdb_id)+'/external_ids?api_key='+tmdb_key).json()['imdb_id']
+            imdb_rating = re.search(r'"ratingValue">\d\.\d', requests.get('https://www.imdb.com/title/'+imdb_id+'/').text).group()[-3:]
+            imdb_info = '\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
+        except:
+            imdb_info = ''
         poster = BytesIO(requests.get('https://www.themoviedb.org/t/p/w600_and_h900_bestv2'+tmdb_info['poster_path'], headers=header).content)
         countries = dict(countries_for_language('zh_CN'))
         tmdb_credits = requests.get('https://api.themoviedb.org/3/movie/'+str(tmdb_id)+'/credits?api_key='+tmdb_key).json()
@@ -95,7 +99,7 @@ async def movie_info(event):
         genres = ''
         for genre in tmdb_info['genres'][:2]:
             genres = genres+' #'+genre['name']
-            info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n导演 '+director+'\n类型'+genres+'\n国家 '+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 '+language+'\n上映 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n演员 '+actors+'\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
+        info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n导演 '+director+'\n类型'+genres+'\n国家 '+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 '+language+'\n上映 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n演员 '+actors+imdb_info
         await bot.send_file(chat_id, poster, caption=info)
     except Exception as e:
         traceback.print_exc()
