@@ -42,7 +42,7 @@ def calculateAge(birthday):
     age = today.year - int(birthday[:4]) - ((today.month, today.day) < (int(birthday[5:7]), int(birthday[8:])))
     return age
 
-def sort_key(e):
+def get_year(e):
     if e.get('release_date') is not None:
         year = e.get('release_date')[:4]
     else:
@@ -181,10 +181,11 @@ async def actor_info(event):
     except:
         age_info = '\n'
     credits_info = requests.get('https://api.themoviedb.org/3/person/'+str(tmdb_id)+'/combined_credits?language=zh-cn&api_key='+tmdb_key).json()['cast']
-    credits_info.sort(reverse=True, key=sort_key)
+    credits_info.sort(reverse=True, key=get_year)
     recent_credits = ''
     for c in credits_info[:10]:
-        recent_credits = recent_credits+'\n'+c.get('release_date', '')[:4]+c.get('first_air_date', '')[:4]+' - '+c.get('title', '')+c.get('name', '')
+        if get_year(c) != '':
+            recent_credits = recent_credits+'\n'+c.get('release_date', '')[:4]+c.get('first_air_date', '')[:4]+' - '+c.get('title', '')+c.get('name', '')
     info = tmdb_info['name']+age_info+'\n近期作品：'+recent_credits
     await bot.send_file(event.chat_id, profile, caption=info)
 
@@ -215,10 +216,11 @@ async def actor_info(event):
     for i in credits_info:
         if i.get('job') == 'Director':
             work_list.append(i)
-    work_list.sort(reverse=True, key=sort_key)
+    work_list.sort(reverse=True, key=get_year)
     recent_credits = ''
     for c in work_list[:10]:
-        recent_credits = recent_credits+'\n'+c.get('release_date', '')[:4]+c.get('first_air_date', '')[:4]+' - '+c.get('title', '')+c.get('name', '')
+        if get_year(c) != '':
+            recent_credits = recent_credits+'\n'+c.get('release_date', '')[:4]+c.get('first_air_date', '')[:4]+' - '+c.get('title', '')+c.get('name', '')
     info = tmdb_info['name']+age_info+'\n近期作品：'+recent_credits
     await bot.send_file(event.chat_id, profile, caption=info)
 
