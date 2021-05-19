@@ -181,14 +181,6 @@ async def actor_info(event):
     except:
         age_info = '\n'
     credits_info = requests.get('https://api.themoviedb.org/3/person/'+str(tmdb_id)+'/combined_credits?language=zh-cn&api_key='+tmdb_key).json()['cast']
-    for i in credits_info:
-        if i.get('release_date') is None:
-            if i.get('first_air_date') is None:
-                credits_info.remove(i)
-        if i.get('release_date') == '':
-            credits_info.remove(i)
-        if i.get('first_air_date') == '':
-            credits_info.remove(i)
     credits_info.sort(reverse=True, key=sort_key)
     recent_credits = ''
     for c in credits_info[:10]:
@@ -219,22 +211,13 @@ async def actor_info(event):
     except:
         age_info = '\n'
     credits_info = requests.get('https://api.themoviedb.org/3/person/'+str(tmdb_id)+'/combined_credits?language=zh-cn&api_key='+tmdb_key).json()['crew']
+    work_list = []
     for i in credits_info:
-        if i.get('release_date') is None:
-            if i.get('first_air_date') is None:
-                credits_info.remove(i)
-                continue
-        if i.get('release_date') == '':
-            credits_info.remove(i)
-            continue
-        if i.get('first_air_date') == '':
-            credits_info.remove(i)
-            continue
-        if i.get('job') is not 'Director':
-            credits_info.remove(i)
-    credits_info.sort(reverse=True, key=sort_key)
+        if i.get('job') == 'Director':
+            work_list.append(i)
+    work_list.sort(reverse=True, key=sort_key)
     recent_credits = ''
-    for c in credits_info[:10]:
+    for c in work_list[:10]:
         recent_credits = recent_credits+'\n'+c.get('release_date', '')[:4]+c.get('first_air_date', '')[:4]+' - '+c.get('title', '')+c.get('name', '')
     info = tmdb_info['name']+age_info+'\n近期作品：'+recent_credits
     await bot.send_file(event.chat_id, profile, caption=info)
