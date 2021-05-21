@@ -13,7 +13,6 @@ app_id = int(os.getenv("APP_ID"))
 app_hash = os.getenv("APP_HASH")
 deepl_key = os.getenv("DEEPL_KEY")
 tmdb_key = 'b729fb42b650d53389fb933b99f4b072'
-header = {'User-Agent': 'Kodi Movie scraper by Team Kodi'}
 
 tmdb_id = []
 for item in open('movieid'):
@@ -24,6 +23,11 @@ for line in open('langcode'):
     key, value = line.split(' ')
     langcode[key] = value.strip('\n')
 
+genres_dic = {}
+for line in open('genres'):
+    key, value = line.split(':')
+    genres_dic[key] = value.strip('\n')
+
 status_dic = {
         'Returning Series': '在播',
         'Ended': '完结',
@@ -31,198 +35,211 @@ status_dic = {
         'In Production': '拍摄中'
         }
 
+def search(cat, event):
+    msg = event.message.text
+    arg = re.sub(r'/\w\s*|\s\d\d\d\d', '', msg)
+    result = requests.get('https://api.themoviedb.org/3/search/{}?api_key={}&include_adult=true&query={}'.format(cat, tmdb_key, arg)).json()['results']
+    try:
+        if re.match(r'\d\d\d\d', msg[-4:]):
+            for i in result:
+                if re.match(msg[-4:], i.get('release_date', '')) or re.match(msg[-4:], i.get('first_air_date', '')):
+                    return i.get('id')
+        else:
+            return result[0].get('id')
+    except Exception as e:
+        print(e)
+        return None
+
 def get_translation(text):
     url = 'https://api-free.deepl.com/v2/translate'
     payload = {'auth_key': deepl_key, 'text': text, 'target_lang': 'ZH'}
     result = requests.post(url, data=payload).json()['translations'][0]['text']
     return result
 
-def calculateAge(birthday):
-    today = date.today()
-    age = today.year - int(birthday[:4]) - ((today.month, today.day) < (int(birthday[5:7]), int(birthday[8:])))
-    return age
+def get_age(birthday, deathday):
+    b = date.fromisoformat(birthday)
+    if deathday:
+        d = date.fromisoformat(deathday)
+    else:
+        d = date.today()
+    age = d.year-b.year-((d.month, d.day) < (b.month, b.day))
+    return str(age)
 
 def get_year(e):
-    if e.get('release_date') is not None:
+    if e.get('release_date'):
         year = e.get('release_date')[:4]
     else:
-        year = e.get('first_air_date')[:4]
+        year = e.get('first_air_date', '')[:4]
     return year
+
+def get_detail(cat, tmdb_id, lang='en-US'):
+    request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=videos,images,credits,alternative_titles,external_ids,translations,combined_credits&api_key={}&include_image_language=en,null&language={}'.format(cat, tmdb_id, tmdb_key, lang)
+    res = requests.get(request_url).json()
+    zh_trans = next((item for item in res.get('translations', {}).get('translations', []) if item.get('iso_3166_1') == 'CN'), {}).get('data', {})
+    zh_name = zh_trans.get('title', zh_trans.get('name', ''))
+    name = res.get('original_title') or res.get('original_name') or res.get('name')
+    yt_url = 'https://www.youtube.com/watch?v={}'
+    yt_key = next((item for item in res.get('videos', {}).get('results', {}) if item['type'] == 'Trailer' and item['site'] == 'YouTube'), {}).get('key', '')
+    date = res.get('release_date') or res.get('first_air_date') or ''
+    genres = []
+    for item in res.get('genres', []):
+        genres.append('#'+genres_dic.get(item.get('name')))
+    cast = []
+    if cat == 'movie' or cat == 'tv':
+        for item in res.get('credits', {}).get('cast', [])[:5]:
+            cast.append(get_translation(item.get('name')))
+    imdb_id = res.get('external_ids', {}).get('imdb_id', '')
+    imdb_rating = get_imdb_rating(imdb_id) if cat == 'movie' else ''
+    trakt_headers = {'trakt-api-key': '4fb92befa9b5cf6c00c1d3fecbd96f8992c388b4539f5ed34431372bbee1eca8'}
+    trakt_rating = str(requests.get('https://api.trakt.tv/shows/{}/ratings'.format(imdb_id), headers=trakt_headers).json()['rating'])[:3] if cat == 'tv' else '0.0'
+    season_info = []
+    for item in res.get('seasons', []):
+        season_info.append('第{}季 - 共{}集'.format(item.get('season_number'), item.get('episode_count')))
+    birthday = res.get('birthday', '')
+    deathday = res.get('deathday', '')
+    a_works = [] 
+    d_works = []
+    if cat == 'person':
+        a_credits = res.get('combined_credits', {}).get('cast', [])
+        a_credits.sort(reverse=True, key=get_year)
+        for item in a_credits[:10]:
+            if get_year(item):
+                a_works.append('{} - {}'.format(get_year(item), item.get('name', item.get('title'))))
+        d_credits = res.get('combined_credits', {}).get('crew', [])
+        d_credits.sort(reverse=True, key=get_year)
+        d_credits_fixed = []
+        for item in d_credits:
+            if item.get('job') == 'Director':
+                d_credits_fixed.append(item)
+        d_credits_fixed.sort(reverse=True, key=get_year)
+        for item in d_credits_fixed[:10]:
+            if get_year(item):
+                d_works.append('{} - {}'.format(get_year(item), item.get('name', item.get('title'))))
+    dic = {
+            'poster': res.get('poster_path'),
+            'profile': res.get('profile_path'),
+            'zh_name': zh_name+' ' if not zh_name == name else '',
+            'name': name,
+            'year': date[:4],
+            'des': zh_trans.get('overview') if zh_trans.get('overview') else res.get('overview', ''),
+            'trailer': yt_url.format(yt_key) if yt_key else '',
+            'director': next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {}).get('name', ''),
+            'genres': ' '.join(genres[:2]),
+            'country': dict(countries_for_language('zh_CN')).get(next((item for item in res.get('production_countries', [])), {}).get('iso_3166_1'), ''),
+            'lang': langcode.get(res.get('original_language'), ''),
+            'date': date,
+            'lenth': res.get('runtime', '') or next((i for i in res.get('episode_run_time', [])), ''),
+            'creator': next((item for item in res.get('created_by', [])), {}).get('name', ''),
+            'cast': '\n         '.join(cast),
+            'imdb_rating': '#IMDB_{} {}'.format(imdb_rating[:1], imdb_rating) if imdb_rating else '',
+            'trakt_rating': '#Trakt_'+trakt_rating[:1]+' '+trakt_rating if not trakt_rating == '0.0' else '',
+            'network': re.sub(' ', '_', next((i for i in res.get('networks', [])), {}).get('name', '')),
+            'status': status_dic.get(res.get('status'), ''),
+            'season_info': '\n'.join(season_info),
+            'birthday': birthday,
+            'deathday': deathday,
+            'age': get_age(birthday, deathday) if birthday else '',
+            'a_works': '\n'.join(a_works),
+            'd_works': '\n'.join(d_works)
+            }
+    return dic
+
+def get_imdb_rating(imdb_id):
+    imdb_url = 'https://www.imdb.com/title/{}/'
+    imdb_rating_regex = re.compile(r'itemprop="ratingValue".*?>.*?([\d.]+).*?<')
+    imdb_page = requests.get(imdb_url.format(imdb_id)).text
+    match = re.search(imdb_rating_regex, imdb_page)
+    if match:
+        return match.group(1)
+    return ''
+
+def get_image(path):
+    base_url = 'https://www.themoviedb.org/t/p/original'
+    headers = {'User-Agent': 'Kodi Movie scraper by Team Kodi'}
+    image = BytesIO(requests.get(base_url+path, headers=headers).content) if path else None
+    return image
 
 bot = TelegramClient('bot', app_id, app_hash).start(bot_token=token)
 
 @bot.on(events.NewMessage(pattern=r'^/m\s'))
 async def movie_info(event):
     chat_id = event.message.chat_id
-    msg = re.sub(r'/m\s*', '', event.message.text)
-    if re.search(r'\s\d*$', msg):
-        search_query = re.match(r'.*\s', msg).group()[:-1]+'&year='+re.search(r'\s\d*$', msg).group()
-    else:
-        search_query = msg
-    search_url = 'https://api.themoviedb.org/3/search/movie?api_key='+tmdb_key+'&language=zh-CN&include_adult=true&query='+search_query
-    try:
-        tmdb_id = requests.get(search_url).json()['results'][0]['id']
-    except:
+    tmdb_id = search('movie', event)
+    if tmdb_id is None:
         await bot.send_message(chat_id, '好像没搜到，换个名字试试')
         return None
-    try:
-        tmdb_info = requests.get('https://api.themoviedb.org/3/movie/'+str(tmdb_id)+'?api_key='+tmdb_key+'&language=zh-CN').json()
-        trailer_list = requests.get('https://api.themoviedb.org/3/movie/'+str(tmdb_id)+'/videos?api_key='+tmdb_key).json()['results']
-        trailer_url = None
-        for i in trailer_list:
-            if i['site'] == 'YouTube':
-                if i['type'] == 'Trailer':
-                    trailer_url = 'https://www.youtube.com/watch?v='+i['key']
-                    break
-        if trailer_url is None:
-            trailer = ''
-        else:
-            trailer = ' [预告片]('+trailer_url+')'
-        try:
-            imdb_id = requests.get('https://api.themoviedb.org/3/movie/'+str(tmdb_id)+'/external_ids?api_key='+tmdb_key).json()['imdb_id']
-            imdb_rating = re.search(r'"ratingValue">\d\.\d', requests.get('https://www.imdb.com/title/'+imdb_id+'/').text).group()[-3:]
-            imdb_info = '\n#IMDB_'+imdb_rating[0]+' '+imdb_rating
-        except:
-            imdb_info = ''
-        poster = BytesIO(requests.get('https://www.themoviedb.org/t/p/w600_and_h900_bestv2'+tmdb_info['poster_path'], headers=header).content)
-        countries = dict(countries_for_language('zh_CN'))
-        tmdb_credits = requests.get('https://api.themoviedb.org/3/movie/'+str(tmdb_id)+'/credits?api_key='+tmdb_key).json()
-        director = ''
-        for crew in tmdb_credits['crew']:
-                if crew['job'] == 'Director':
-                    director = '\n导演 '+re.sub('（.*）', '', get_translation(crew['name']))
-                    break
-        language = langcode[tmdb_info['original_language']]
-        actors = re.sub('（.*）', '', get_translation(tmdb_credits['cast'][0]['name']))+'\n'
-        for item in tmdb_credits['cast'][1:5]:
-            actor = re.sub('（.*）', '', get_translation(item['name']))
-            actors = actors+'         '+actor+'\n'
-        genres = ''
-        for genre in tmdb_info['genres'][:2]:
-            genres = genres+' #'+genre['name']
-        info = '**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n'+director+'\n类型'+genres+'\n国家 '+countries[tmdb_info['production_countries'][0]['iso_3166_1']]+'\n语言 '+language+'\n上映 '+tmdb_info['release_date']+'\n片长 '+str(tmdb_info['runtime'])+'分钟\n演员 '+actors+imdb_info
-        await bot.send_file(chat_id, poster, caption=info)
-    except Exception as e:
-        traceback.print_exc()
-        await bot.send_message(chat_id, '此片信息不完整，详见：[链接](https://www.themoviedb.org/movie/'+str(tmdb_id)+')')
+    d = get_detail('movie', tmdb_id)
+    poster = get_image(d.get('poster'))
+    info = '{}{}'.format(d.get('zh_name'), d.get('name'))
+    info += ' ({})'.format(d.get('year')) if d.get('year') else ''
+    info += ' [预告片]({})'.format(d.get('trailer')) if d.get('trailer') else ''
+    info += '\n\n{}\n\n'.format(d.get('des')) if d.get('des') else '\n\n'
+    info += '导演 {}\n'.format(d.get('director')) if d.get('director') else ''
+    info += '类型 {}\n'.format(d.get('genres')) if d.get('genres') else ''
+    info += '国家 {}\n'.format(d.get('country')) if d.get('country') else ''
+    info += '语言 {}\n'.format(d.get('lang')) if d.get('lang') else ''
+    info += '上映 {}\n'.format(d.get('date')) if d.get('date') else ''
+    info += '片长 {}\n'.format(d.get('lenth')) if d.get('lenth') else ''
+    info += '演员 {}'.format(d.get('cast')) if d.get('cast') else ''
+    info += '\n\n{}'.format(d.get('imdb_rating')) if d.get('imdb_rating') else ''
+    await bot.send_message(chat_id, info, file=poster)
 
 @bot.on(events.NewMessage(pattern=r'^/t\s'))
 async def tv_info(event):
     chat_id = event.message.chat_id
-    msg = re.sub(r'/t\s*', '', event.message.text)
-    if re.search(r'\s\d*$', msg):
-        search_query = re.match(r'.*\s', msg).group()[:-1]+'&first_air_date_year='+re.search(r'\s\d*$', msg).group()
-    else:
-        search_query = msg
-    search_url = 'https://api.themoviedb.org/3/search/tv?api_key='+tmdb_key+'&language=zh-CN&include_adult=true&query='+search_query
-    try:
-        tmdb_id = requests.get(search_url).json()['results'][0]['id']
-    except:
+    tmdb_id = search('tv', event)
+    if tmdb_id is None:
         await bot.send_message(chat_id, '好像没搜到，换个名字试试')
         return None
-    try:
-        tmdb_info = requests.get('https://api.themoviedb.org/3/tv/'+str(tmdb_id)+'?api_key='+tmdb_key+'&language=zh-CN').json()
-        trailer_list = requests.get('https://api.themoviedb.org/3/tv/'+str(tmdb_id)+'/videos?api_key='+tmdb_key).json()['results']
-        trailer_url = None
-        for i in trailer_list:
-            if i['site'] == 'YouTube':
-                if i['type'] == 'Trailer':
-                    trailer_url = 'https://www.youtube.com/watch?v='+i['key']
-                    break
-        if trailer_url is None:
-            trailer = ''
-        else:
-            trailer = ' [预告片]('+trailer_url+')'
-        imdb_id = requests.get('https://api.themoviedb.org/3/tv/'+str(tmdb_id)+'/external_ids?api_key='+tmdb_key).json()['imdb_id']
-        trakt_rating = str(requests.get('https://api.trakt.tv/shows/'+imdb_id+'/ratings', headers={'trakt-api-key': '4fb92befa9b5cf6c00c1d3fecbd96f8992c388b4539f5ed34431372bbee1eca8'}).json()['rating'])[:3]
-        poster = BytesIO(requests.get('https://www.themoviedb.org/t/p/w600_and_h900_bestv2'+tmdb_info['poster_path'], headers=header).content)
-        countries = dict(countries_for_language('zh_CN'))
-        tmdb_credits = requests.get('https://api.themoviedb.org/3/tv/'+str(tmdb_id)+'/credits?api_key='+tmdb_key).json()
-        creator = ''
-        for person in tmdb_info['created_by']:
-                    creator = creator+' '+re.sub('（.*）', '', get_translation(person['name']))
-        actors = re.sub('（.*）', '', get_translation(tmdb_credits['cast'][0]['name']))+'\n'
-        for item in tmdb_credits['cast'][1:5]:
-            actor = re.sub('（.*）', '', get_translation(item['name']))
-            actors = actors+'         '+actor+'\n'
-        genres = ''
-        for genre in tmdb_info['genres'][:2]:
-            genres = genres+' #'+genre['name']
-        seasons = ''
-        for season in tmdb_info['seasons']:
-            seasons = seasons+season['name']+' - 共'+str(season['episode_count'])+'集\n'
-        status = status_dic[tmdb_info['status']]
-        info = '**'+tmdb_info['name']+' '+tmdb_info['original_name']+' ('+tmdb_info['first_air_date'][:4]+')**'+trailer+'\n\n'+tmdb_info['overview']+'\n\n创作'+creator+'\n类型'+genres+'\n国家 '+countries[tmdb_info['origin_country'][0]]+'\n网络 #'+tmdb_info['networks'][0]['name']+'\n状况 '+status+'\n首播 '+tmdb_info['first_air_date']+'\n集长 '+str(tmdb_info['episode_run_time'][0])+'分钟\n演员 '+actors+'\n分季概况：\n'+seasons+'\n#Trakt_'+trakt_rating[0]+' '+trakt_rating
-        await bot.send_file(chat_id, poster, caption=info)
-    except Exception as e:
-        traceback.print_exc()
-        await bot.send_message(chat_id, '此剧信息不完整，详见：[链接](https://www.themoviedb.org/tv/'+str(tmdb_id)+')')
+    d = get_detail('tv', tmdb_id)
+    poster = get_image(d.get('poster'))
+    info = '{}{}'.format(d.get('zh_name'), d.get('name'))
+    info += ' ({})'.format(d.get('year')) if d.get('year') else ''
+    info += ' [预告片]({})'.format(d.get('trailer')) if d.get('trailer') else ''
+    info += '\n\n{}\n\n'.format(d.get('des')) if d.get('des') else '\n\n'
+    info += '创作 {}\n'.format(d.get('creator')) if d.get('creator') else ''
+    info += '类型 {}\n'.format(d.get('genres')) if d.get('genres') else ''
+    info += '国家 {}\n'.format(d.get('country')) if d.get('country') else ''
+    info += '网络 #{}\n'.format(d.get('network')) if d.get('network') else ''
+    info += '状况 {}\n'.format(d.get('status')) if d.get('status') else ''
+    info += '首播 {}\n'.format(d.get('date')) if d.get('date') else ''
+    info += '集长 {}\n'.format(d.get('lenth')) if d.get('lenth') else ''
+    info += '演员 {}'.format(d.get('cast')) if d.get('cast') else ''
+    info += '\n\n分季概况：\n{}'.format(d.get('season_info')) if d.get('season_info') else ''
+    info += '\n\n{}'.format(d.get('trakt_rating')) if d.get('trakt_rating') else ''
+    await bot.send_message(chat_id, info, file=poster)
 
 @bot.on(events.NewMessage(pattern=r'^/a\s'))
 async def actor_info(event):
-    search_query = re.sub(r'/a\s*', '', event.message.text)
-    search_url = 'https://api.themoviedb.org/3/search/person?api_key='+tmdb_key+'&include_adult=true&query='+search_query
-    try:
-        tmdb_id = requests.get(search_url).json()['results'][0]['id']
-    except:
+    chat_id = event.message.chat_id
+    tmdb_id = search('person', event)
+    if tmdb_id is None:
         await bot.send_message(event.chat_id, '好像没搜到，换个名字试试')
         return None
-    tmdb_info = requests.get('https://api.themoviedb.org/3/person/'+str(tmdb_id)+'?api_key='+tmdb_key).json()
-    profile = BytesIO(requests.get('https://www.themoviedb.org/t/p/original'+tmdb_info['profile_path'], headers=header).content)
-    try:
-        birthday = tmdb_info['birthday']
-        deathday = tmdb_info['deathday']
-        if deathday:
-            age = str(int(deathday[:4]) - int(birthday[:4]))
-            age_info = '\n出生 '+birthday+'\n去世 '+deathday+' ('+age+'岁)\n'
-        else:
-            age = str(calculateAge(birthday))
-            age_info = '\n出生 '+birthday+' ('+age+'岁)\n'
-    except:
-        age_info = '\n'
-    credits_info = requests.get('https://api.themoviedb.org/3/person/'+str(tmdb_id)+'/combined_credits?language=zh-cn&api_key='+tmdb_key).json()['cast']
-    credits_info.sort(reverse=True, key=get_year)
-    recent_credits = ''
-    for c in credits_info[:10]:
-        if get_year(c) != '':
-            recent_credits = recent_credits+'\n'+c.get('release_date', '')[:4]+c.get('first_air_date', '')[:4]+' - '+c.get('title', '')+c.get('name', '')
-    info = tmdb_info['name']+age_info+'\n近期作品：'+recent_credits
-    await bot.send_file(event.chat_id, profile, caption=info)
+    d = get_detail('person', tmdb_id, 'zh-CN')
+    profile = get_image(d.get('profile'))
+    info = d.get('name')
+    info += '\n出生 {}'.format(d.get('birthday')) if d.get('birthday') else ''
+    info += '\n去世 {}'.format(d.get('deathday')) if d.get('deathday') else ''
+    info += ' ({}岁)'.format(d.get('age')) if d.get('age') else ''
+    info += '\n\n近期作品:\n{}'.format(d.get('a_works')) if d.get('a_works') else ''
+    await bot.send_message(chat_id, info, file=profile)
 
 @bot.on(events.NewMessage(pattern=r'^/d\s'))
-async def actor_info(event):
-    search_query = re.sub(r'/d\s*', '', event.message.text)
-    search_url = 'https://api.themoviedb.org/3/search/person?api_key='+tmdb_key+'&include_adult=true&query='+search_query
-    try:
-        tmdb_id = requests.get(search_url).json()['results'][0]['id']
-    except:
+async def director_info(event):
+    chat_id = event.message.chat_id
+    tmdb_id = search('person', event)
+    if tmdb_id is None:
         await bot.send_message(event.chat_id, '好像没搜到，换个名字试试')
         return None
-    tmdb_info = requests.get('https://api.themoviedb.org/3/person/'+str(tmdb_id)+'?api_key='+tmdb_key).json()
-    profile = BytesIO(requests.get('https://www.themoviedb.org/t/p/original'+tmdb_info['profile_path'], headers=header).content)
-    try:
-        birthday = tmdb_info['birthday']
-        deathday = tmdb_info['deathday']
-        if deathday:
-            age = str(int(deathday[:4]) - int(birthday[:4]))
-            age_info = '\n出生 '+birthday+'\n去世 '+deathday+' ('+age+'岁)\n'
-        else:
-            age = str(calculateAge(birthday))
-            age_info = '\n出生 '+birthday+' ('+age+'岁)\n'
-    except:
-        age_info = '\n'
-    credits_info = requests.get('https://api.themoviedb.org/3/person/'+str(tmdb_id)+'/combined_credits?language=zh-cn&api_key='+tmdb_key).json()['crew']
-    work_list = []
-    for i in credits_info:
-        if i.get('job') == 'Director':
-            work_list.append(i)
-    work_list.sort(reverse=True, key=get_year)
-    recent_credits = ''
-    for c in work_list[:10]:
-        if get_year(c) != '':
-            recent_credits = recent_credits+'\n'+c.get('release_date', '')[:4]+c.get('first_air_date', '')[:4]+' - '+c.get('title', '')+c.get('name', '')
-    info = tmdb_info['name']+age_info+'\n近期作品：'+recent_credits
-    await bot.send_file(event.chat_id, profile, caption=info)
+    d = get_detail('person', tmdb_id, 'zh-CN')
+    profile = get_image(d.get('profile'))
+    info = d.get('name')
+    info += '\n出生 {}'.format(d.get('birthday')) if d.get('birthday') else ''
+    info += '\n去世 {}'.format(d.get('deathday')) if d.get('deathday') else ''
+    info += ' ({}岁)'.format(d.get('age')) if d.get('age') else ''
+    info += '\n\n近期作品:\n{}'.format(d.get('d_works')) if d.get('d_works') else ''
+    await bot.send_message(chat_id, info, file=profile)
 
 @bot.on(events.NewMessage(pattern=r'^出题$|^出題$'))
 async def send_question(event):
