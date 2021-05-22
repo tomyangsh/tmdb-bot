@@ -85,9 +85,19 @@ def get_detail(cat, tmdb_id, lang='en-US'):
     for item in res.get('genres', []):
         genres.append('#'+genres_dic.get(item.get('name')))
     cast = []
+    title_list = [name]
+    backdrop = []
     if cat == 'movie' or cat == 'tv':
         for item in res.get('credits', {}).get('cast', [])[:5]:
-            cast.append(get_translation(item.get('name')))
+            cast.append(item.get('name'))
+        backdrop_list = res.get('images').get('backdrops') or []
+        backdrop = random.choice(backdrop_list).get('file_path')
+        for item in res.get('alternative_titles').get('titles', res.get('alternative_titles').get('results')) or []:
+            if item.get('title'):
+                title_list.append(item.get('title'))
+        for item in res.get('translations').get('translations'):
+            if item.get('data').get('title', item.get('data').get('name')):
+                title_list.append(item.get('data').get('title', item.get('data').get('name')))
     imdb_id = res.get('external_ids', {}).get('imdb_id', '')
     imdb_rating = get_imdb_rating(imdb_id) if cat == 'movie' else ''
     trakt_headers = {'trakt-api-key': '4fb92befa9b5cf6c00c1d3fecbd96f8992c388b4539f5ed34431372bbee1eca8'}
@@ -140,7 +150,10 @@ def get_detail(cat, tmdb_id, lang='en-US'):
             'deathday': deathday,
             'age': get_age(birthday, deathday) if birthday else '',
             'a_works': '\n'.join(a_works),
-            'd_works': '\n'.join(d_works)
+            'd_works': '\n'.join(d_works),
+            'link': 'https://www.themoviedb.org/{}/{}'.format(cat, tmdb_id),
+            'backdrop': backdrop or res.get('poster_path'),
+            'title_list': title_list
             }
     return dic
 
@@ -243,32 +256,26 @@ async def director_info(event):
 
 @bot.on(events.NewMessage(pattern=r'^出题$|^出題$'))
 async def send_question(event):
+    chat_id = event.message.chat_id
     sender = event.message.sender
-    id = str(random.choice(tmdb_id))
-    tmdb_info = requests.get('https://api.themoviedb.org/3/movie/'+id+'?api_key='+tmdb_key+'&language=zh-CN').json()
-    image_list = requests.get('https://api.themoviedb.org/3/movie/'+id+'/images?api_key='+tmdb_key).json()['backdrops']
+    tid = str(random.choice(tmdb_id))
+    d = get_detail('movie', tid)
+    backdrop = get_image(d.get('backdrop'))
+    zh_title = d.get('zh_name')
+    title = d.get('name')
+    title_list = d.get('title_list')
+    year = d.get('year')
+    genres = d.get('genres')
+    link = d.get('link')
+#    try:
+    sender_name = sender.first_name or 'BOSS'
+#    except:
+#        sender_name = 'BOSS'
+    question = '{} 问，这部{}年的{}影片的标题是？(60秒内作答有效)'.format(sender_name, year, genres)
+    print(title)
     try:
-        sender_name = sender.first_name
-    except:
-        sender_name = 'BOSS'
-    caption1 = sender_name+' 问，这部'+tmdb_info['release_date'][:4]+'年的'+tmdb_info['genres'][0]['name']+'影片的标题是？(60秒内作答有效)'
-    print(tmdb_info['title'])
-    title_list = []
-    title_info = requests.get('https://api.themoviedb.org/3/movie/'+id+'/alternative_titles?api_key='+tmdb_key+'&country=CN').json()['titles']
-    info_url = 'https://www.themoviedb.org/movie/'+str(tmdb_info['id'])   
-    for t in title_info:
-        title_list.append(t['title'])
-    translation_info = requests.get('https://api.themoviedb.org/3/movie/'+id+'/translations?api_key='+tmdb_key+'&country=CN').json()['translations']
-    for t in translation_info:
-        title_list.append(t['data']['title'])
-    try:
-        image_url = 'https://www.themoviedb.org/t/p/original'+random.choice(image_list)['file_path']
-    except:
-        image_url = 'https://www.themoviedb.org/t/p/original'+tmdb_info['poster_path']
-    image = BytesIO(requests.get(image_url, headers=header).content)
-    try:
-        async with bot.conversation(event.message.chat_id, exclusive=False, total_timeout=60) as conv:
-            question = await conv.send_file(image, caption=caption1)
+        async with bot.conversation(chat_id, exclusive=False, total_timeout=60) as conv:
+            q = await conv.send_message(question, file=backdrop)
             while True:
                 response = await conv.get_response()
                 try:
@@ -279,12 +286,12 @@ async def send_question(event):
                 for a in title_list:
                     if a != '':
                         if re.match(re.escape(a[:5]), answer, re.IGNORECASE):
-                            caption2 = responder_name+' 回答正确！\n**'+tmdb_info['title']+' '+tmdb_info['original_title']+' ('+tmdb_info['release_date'][:4]+')** '+'[链接]('+info_url+')'
-                            await bot.send_message(event.message.chat_id, caption2, reply_to=response)
+                            reply = '{} 回答正确！\n**{}{} ({})** [链接]({})'.format(responder_name, zh_title, title, year, link)
+                            await conv.send_message(reply, reply_to=response)
                             return
     except Exception as e:
         print(e)
-        await bot.edit_message(question, '答题超时，答案：'+tmdb_info['title'])
+        await bot.edit_message(q, '答题超时，答案：{}'.format(zh_title))
 
 if __name__ == '__main__':
     bot.start()
