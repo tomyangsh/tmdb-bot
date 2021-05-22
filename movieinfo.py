@@ -74,10 +74,10 @@ def get_year(e):
     return year
 
 def get_zh_name(name):
-    request_url = 'https://zh.wikipedia.org/w/api.php?action=query&format=json&list=search&utf8=1&formatversion=2&srsearch={}&srnamespace=0&srlimit=1&srinfo=&srprop='.format(name)
+    request_url = 'https://en.wikipedia.org/w/api.php?action=query&format=json&maxlag=1&prop=langlinks&titles={}&redirects=1&utf8=1&lllang=zh&llinlanguagecode=zh'.format(name)
     res = requests.get(request_url).json()
-    result= res.get('query', {}).get('search') or []
-    name = next((name.get('title') for name in result), '') or name
+    result= list(res.get('query', {}).get('pages', {}).values())
+    name = next((item.get('langlinks', [{}])[0].get('*') for item in result), '') or name
     return name
 
 def get_detail(cat, tmdb_id, lang='en-US'):
