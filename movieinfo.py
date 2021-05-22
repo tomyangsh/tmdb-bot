@@ -1,8 +1,11 @@
-import requests, re, json, os, urllib.request, shutil, random, traceback, datetime
+import requests, re, json, os, random
 
 from io import BytesIO
 
 from datetime import date
+
+from langdetect import detect
+from langdetect import DetectorFactory
 
 from telethon import TelegramClient, events
 
@@ -14,9 +17,7 @@ app_hash = os.getenv("APP_HASH")
 deepl_key = os.getenv("DEEPL_KEY")
 tmdb_key = 'b729fb42b650d53389fb933b99f4b072'
 
-tmdb_id = []
-for item in open('movieid'):
-    tmdb_id.append(item.strip("\n"))
+id_list = tuple(i.strip("\n") for i in open('movieid'))
 
 langcode = {}
 for line in open('langcode'):
@@ -72,39 +73,45 @@ def get_year(e):
         year = e.get('first_air_date', '')[:4]
     return year
 
+def get_zh_name(tmdb_id):
+    request_url = 'https://api.themoviedb.org/3/person/{}?api_key={}'.format(tmdb_id, tmdb_key)
+    res = requests.get(request_url).json()
+    DetectorFactory.seed = 0
+    name = next((name for name in res.get('also_known_as', '') if detect(name) == 'zh-cn' or detect(name) == 'zh-tw'), '') or res.get('name')
+    return name
+
 def get_detail(cat, tmdb_id, lang='en-US'):
     request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=videos,images,credits,alternative_titles,external_ids,translations,combined_credits&api_key={}&include_image_language=en,null&language={}'.format(cat, tmdb_id, tmdb_key, lang)
     res = requests.get(request_url).json()
-    zh_trans = next((item for item in res.get('translations', {}).get('translations', []) if item.get('iso_3166_1') == 'CN'), {}).get('data', {})
-    zh_name = zh_trans.get('title', zh_trans.get('name', ''))
+    zh_trans = next((item for item in res.get('translations', {}).get('translations', []) if item.get('iso_3166_1') == 'CN' and item.get('iso_639_1') == 'zh'), {}).get('data', {})
+    if cat == 'person':
+        zh_name = get_zh_name(tmdb_id)
+    else:
+        zh_name = zh_trans.get('title', zh_trans.get('name', ''))
     name = res.get('original_title') or res.get('original_name') or res.get('name')
     yt_url = 'https://www.youtube.com/watch?v={}'
     yt_key = next((item for item in res.get('videos', {}).get('results', {}) if item['type'] == 'Trailer' and item['site'] == 'YouTube'), {}).get('key', '')
     date = res.get('release_date') or res.get('first_air_date') or ''
-    genres = []
+    genres = ['#'+genres_dic.get(i.get('name')) for i in res.get('genres', [])]
     for item in res.get('genres', []):
         genres.append('#'+genres_dic.get(item.get('name')))
     cast = []
     title_list = [name]
     backdrop = []
     if cat == 'movie' or cat == 'tv':
-        for item in res.get('credits', {}).get('cast', [])[:5]:
-            cast.append(item.get('name'))
+        cast = [get_zh_name(item.get('id')) for item in res.get('credits', {}).get('cast', [])[:5]]
         backdrop_list = res.get('images').get('backdrops') or []
-        backdrop = random.choice(backdrop_list).get('file_path')
-        for item in res.get('alternative_titles').get('titles', res.get('alternative_titles').get('results')) or []:
-            if item.get('title'):
-                title_list.append(item.get('title'))
-        for item in res.get('translations').get('translations'):
-            if item.get('data').get('title', item.get('data').get('name')):
-                title_list.append(item.get('data').get('title', item.get('data').get('name')))
+        if backdrop_list:
+            backdrop = random.choice(backdrop_list).get('file_path')
+        title_list = [item.get('title') for item in res.get('alternative_titles').get('titles', res.get('alternative_titles').get('results')) or [] if item.get('title')]
+        title_list = [item.get('data').get('title', item.get('data').get('name')) for item in res.get('translations').get('translations') if item.get('data').get('title', item.get('data').get('name'))]
     imdb_id = res.get('external_ids', {}).get('imdb_id', '')
-    imdb_rating = get_imdb_rating(imdb_id) if cat == 'movie' else ''
+    imdb_rating = ''
+    if cat == 'movie':
+        imdb_rating = get_imdb_rating(imdb_id) if cat == 'movie' else ''
     trakt_headers = {'trakt-api-key': '4fb92befa9b5cf6c00c1d3fecbd96f8992c388b4539f5ed34431372bbee1eca8'}
     trakt_rating = str(requests.get('https://api.trakt.tv/shows/{}/ratings'.format(imdb_id), headers=trakt_headers).json()['rating'])[:3] if cat == 'tv' else '0.0'
-    season_info = []
-    for item in res.get('seasons', []):
-        season_info.append('第{}季 - 共{}集'.format(item.get('season_number'), item.get('episode_count')))
+    season_info = ['第{}季 - 共{}集'.format(item.get('season_number'), item.get('episode_count')) for item in res.get('seasons', [])]
     birthday = res.get('birthday', '')
     deathday = res.get('deathday', '')
     a_works = [] 
@@ -112,19 +119,12 @@ def get_detail(cat, tmdb_id, lang='en-US'):
     if cat == 'person':
         a_credits = res.get('combined_credits', {}).get('cast', [])
         a_credits.sort(reverse=True, key=get_year)
-        for item in a_credits[:10]:
-            if get_year(item):
-                a_works.append('{} - {}'.format(get_year(item), item.get('name', item.get('title'))))
+        a_works = ['{} - {}'.format(get_year(item), item.get('name', item.get('title'))) for item in a_credits[:10] if get_year(item)]
         d_credits = res.get('combined_credits', {}).get('crew', [])
         d_credits.sort(reverse=True, key=get_year)
-        d_credits_fixed = []
-        for item in d_credits:
-            if item.get('job') == 'Director':
-                d_credits_fixed.append(item)
+        d_credits_fixed = [item for item in d_credits if item.get('job') == 'Director']
         d_credits_fixed.sort(reverse=True, key=get_year)
-        for item in d_credits_fixed[:10]:
-            if get_year(item):
-                d_works.append('{} - {}'.format(get_year(item), item.get('name', item.get('title'))))
+        d_works = ['{} - {}'.format(get_year(item), item.get('name', item.get('title'))) for item in d_credits_fixed[:10] if get_year(item)]
     dic = {
             'poster': res.get('poster_path'),
             'profile': res.get('profile_path'),
@@ -133,13 +133,13 @@ def get_detail(cat, tmdb_id, lang='en-US'):
             'year': date[:4],
             'des': zh_trans.get('overview') if zh_trans.get('overview') else res.get('overview', ''),
             'trailer': yt_url.format(yt_key) if yt_key else '',
-            'director': next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {}).get('name', ''),
+            'director': get_zh_name(next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {}).get('id', '')),
             'genres': ' '.join(genres[:2]),
             'country': dict(countries_for_language('zh_CN')).get(next((item for item in res.get('production_countries', [])), {}).get('iso_3166_1'), ''),
             'lang': langcode.get(res.get('original_language'), ''),
             'date': date,
             'lenth': res.get('runtime', '') or next((i for i in res.get('episode_run_time', [])), ''),
-            'creator': next((item for item in res.get('created_by', [])), {}).get('name', ''),
+            'creator': get_zh_name(next((item for item in res.get('created_by', [])), {}).get('id', '')),
             'cast': '\n         '.join(cast),
             'imdb_rating': '#IMDB_{} {}'.format(imdb_rating[:1], imdb_rating) if imdb_rating else '',
             'trakt_rating': '#Trakt_'+trakt_rating[:1]+' '+trakt_rating if not trakt_rating == '0.0' else '',
@@ -231,7 +231,7 @@ async def actor_info(event):
         return None
     d = get_detail('person', tmdb_id, 'zh-CN')
     profile = get_image(d.get('profile'))
-    info = d.get('name')
+    info = d.get('zh_name')+d.get('name')
     info += '\n出生 {}'.format(d.get('birthday')) if d.get('birthday') else ''
     info += '\n去世 {}'.format(d.get('deathday')) if d.get('deathday') else ''
     info += ' ({}岁)'.format(d.get('age')) if d.get('age') else ''
@@ -247,7 +247,7 @@ async def director_info(event):
         return None
     d = get_detail('person', tmdb_id, 'zh-CN')
     profile = get_image(d.get('profile'))
-    info = d.get('name')
+    info = d.get('zh_name')+d.get('name')
     info += '\n出生 {}'.format(d.get('birthday')) if d.get('birthday') else ''
     info += '\n去世 {}'.format(d.get('deathday')) if d.get('deathday') else ''
     info += ' ({}岁)'.format(d.get('age')) if d.get('age') else ''
@@ -258,7 +258,7 @@ async def director_info(event):
 async def send_question(event):
     chat_id = event.message.chat_id
     sender = event.message.sender
-    tid = str(random.choice(tmdb_id))
+    tid = str(random.choice(id_list))
     d = get_detail('movie', tid)
     backdrop = get_image(d.get('backdrop'))
     zh_title = d.get('zh_name')
@@ -271,7 +271,7 @@ async def send_question(event):
     sender_name = sender.first_name or 'BOSS'
 #    except:
 #        sender_name = 'BOSS'
-    question = '{} 问，这部{}年的{}影片的标题是？(60秒内作答有效)'.format(sender_name, year, genres)
+    question = '{} 问，这部{}年的 {} 影片的标题是？(60秒内作答有效)'.format(sender_name, year, genres)
     print(title)
     try:
         async with bot.conversation(chat_id, exclusive=False, total_timeout=60) as conv:
