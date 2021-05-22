@@ -73,11 +73,11 @@ def get_year(e):
         year = e.get('first_air_date', '')[:4]
     return year
 
-def get_zh_name(tmdb_id):
-    request_url = 'https://api.themoviedb.org/3/person/{}?api_key={}'.format(tmdb_id, tmdb_key)
+def get_zh_name(name):
+    request_url = 'https://zh.wikipedia.org/w/api.php?action=query&format=json&list=search&utf8=1&formatversion=2&srsearch={}&srnamespace=0&srlimit=1&srinfo=&srprop='.format(name)
     res = requests.get(request_url).json()
-    DetectorFactory.seed = 0
-    name = next((name for name in res.get('also_known_as', '') if detect(name) == 'zh-cn' or detect(name) == 'zh-tw'), '') or res.get('name')
+    result= res.get('query', {}).get('search') or []
+    name = next((name.get('title') for name in result), '') or name
     return name
 
 def get_detail(cat, tmdb_id, lang='en-US'):
@@ -85,7 +85,7 @@ def get_detail(cat, tmdb_id, lang='en-US'):
     res = requests.get(request_url).json()
     zh_trans = next((item for item in res.get('translations', {}).get('translations', []) if item.get('iso_3166_1') == 'CN' and item.get('iso_639_1') == 'zh'), {}).get('data', {})
     if cat == 'person':
-        zh_name = get_zh_name(tmdb_id)
+        zh_name = get_zh_name(res.get('name'))
     else:
         zh_name = zh_trans.get('title', zh_trans.get('name', ''))
     name = res.get('original_title') or res.get('original_name') or res.get('name')
@@ -99,7 +99,7 @@ def get_detail(cat, tmdb_id, lang='en-US'):
     title_list = [name]
     backdrop = []
     if cat == 'movie' or cat == 'tv':
-        cast = [get_zh_name(item.get('id')) for item in res.get('credits', {}).get('cast', [])[:5]]
+        cast = [get_zh_name(item.get('name')) for item in res.get('credits', {}).get('cast', [])[:5]]
         backdrop_list = res.get('images').get('backdrops') or []
         if backdrop_list:
             backdrop = random.choice(backdrop_list).get('file_path')
@@ -133,13 +133,13 @@ def get_detail(cat, tmdb_id, lang='en-US'):
             'year': date[:4],
             'des': zh_trans.get('overview') if zh_trans.get('overview') else res.get('overview', ''),
             'trailer': yt_url.format(yt_key) if yt_key else '',
-            'director': get_zh_name(next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {}).get('id', '')),
+            'director': get_zh_name(next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {}).get('name', '')),
             'genres': ' '.join(genres[:2]),
             'country': dict(countries_for_language('zh_CN')).get(next((item for item in res.get('production_countries', [])), {}).get('iso_3166_1'), ''),
             'lang': langcode.get(res.get('original_language'), ''),
             'date': date,
             'lenth': res.get('runtime', '') or next((i for i in res.get('episode_run_time', [])), ''),
-            'creator': get_zh_name(next((item for item in res.get('created_by', [])), {}).get('id', '')),
+            'creator': get_zh_name(next((item for item in res.get('created_by', [])), {}).get('name', '')) if cat == 'tv' else '',
             'cast': '\n         '.join(cast),
             'imdb_rating': '#IMDB_{} {}'.format(imdb_rating[:1], imdb_rating) if imdb_rating else '',
             'trakt_rating': '#Trakt_'+trakt_rating[:1]+' '+trakt_rating if not trakt_rating == '0.0' else '',
