@@ -110,7 +110,7 @@ def get_detail(cat, tmdb_id, lang='en-US'):
     if cat == 'movie':
         imdb_rating = get_imdb_rating(imdb_id) if cat == 'movie' else ''
     trakt_headers = {'trakt-api-key': '4fb92befa9b5cf6c00c1d3fecbd96f8992c388b4539f5ed34431372bbee1eca8'}
-    trakt_rating = str(requests.get('https://api.trakt.tv/shows/{}/ratings'.format(imdb_id), headers=trakt_headers).json()['rating'])[:3] if cat == 'tv' else '0.0'
+    trakt_rating = str(requests.get('https://api.trakt.tv/shows/{}/ratings'.format(imdb_id), headers=trakt_headers).json()['rating'])[:3] if cat == 'tv' and imdb_id else '0.0'
     season_info = ['第{}季 - 共{}集'.format(item.get('season_number'), item.get('episode_count')) for item in res.get('seasons', [])]
     birthday = res.get('birthday', '')
     deathday = res.get('deathday', '')
