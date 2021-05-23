@@ -1,5 +1,7 @@
 import requests, re, json, os, random
 
+import unidecode
+
 from io import BytesIO
 
 from datetime import date
@@ -74,10 +76,11 @@ def get_year(e):
     return year
 
 def get_zh_name(name):
-    request_url = 'https://en.wikipedia.org/w/api.php?action=query&format=json&maxlag=1&prop=langlinks&titles={}&redirects=1&utf8=1&lllang=zh&llinlanguagecode=zh'.format(name)
+    name = unidecode.unidecode(name)
+    request_url = 'https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&sites=enwiki&titles={}&props=labels&languages=zh-cn&languagefallback=1&utf8=1&formatversion=2&normalize=1'.format(name)
     res = requests.get(request_url).json()
-    result= list(res.get('query', {}).get('pages', {}).values())
-    name = next((item.get('langlinks', [{}])[0].get('*') for item in result), '') or name
+    result= list(res.get('entities', {}).values())
+    name = next((item.get('labels', {}).get('zh-cn', {}).get('value', '') for item in result), '') or name
     return name
 
 def get_detail(cat, tmdb_id, lang='en-US'):
@@ -89,29 +92,34 @@ def get_detail(cat, tmdb_id, lang='en-US'):
     else:
         zh_name = zh_trans.get('title', zh_trans.get('name', ''))
     name = res.get('original_title') or res.get('original_name') or res.get('name')
-    yt_url = 'https://www.youtube.com/watch?v={}'
-    yt_key = next((item for item in res.get('videos', {}).get('results', {}) if item['type'] == 'Trailer' and item['site'] == 'YouTube'), {}).get('key', '')
-    date = res.get('release_date') or res.get('first_air_date') or ''
-    genres = ['#'+genres_dic.get(i.get('name')) for i in res.get('genres', [])]
-    for item in res.get('genres', []):
-        genres.append('#'+genres_dic.get(item.get('name')))
     cast = []
     title_list = [name]
     backdrop = []
+    season_info = []
+    trakt_rating = '0.0'
+    yt_key = ''
+    date = ''
+    imdb_rating = ''
     if cat == 'movie' or cat == 'tv':
+        yt_url = 'https://www.youtube.com/watch?v={}'
+        yt_key = next((item for item in res.get('videos', {}).get('results', {}) if item['type'] == 'Trailer' and item['site'] == 'YouTube'), {}).get('key', '')
+        date = res.get('release_date') or res.get('first_air_date') or ''
+        genres = ['#'+genres_dic.get(i.get('name')) for i in res.get('genres', [])]
+        for item in res.get('genres', []):
+            genres.append('#'+genres_dic.get(item.get('name')))
         cast = [get_zh_name(item.get('name')) for item in res.get('credits', {}).get('cast', [])[:5]]
         backdrop_list = res.get('images').get('backdrops') or []
         if backdrop_list:
             backdrop = random.choice(backdrop_list).get('file_path')
         title_list = [item.get('title') for item in res.get('alternative_titles').get('titles', res.get('alternative_titles').get('results')) or [] if item.get('title')]
         title_list = [item.get('data').get('title', item.get('data').get('name')) for item in res.get('translations').get('translations') if item.get('data').get('title', item.get('data').get('name'))]
-    imdb_id = res.get('external_ids', {}).get('imdb_id', '')
-    imdb_rating = ''
-    if cat == 'movie':
-        imdb_rating = get_imdb_rating(imdb_id) if cat == 'movie' else ''
-    trakt_headers = {'trakt-api-key': '4fb92befa9b5cf6c00c1d3fecbd96f8992c388b4539f5ed34431372bbee1eca8'}
-    trakt_rating = str(requests.get('https://api.trakt.tv/shows/{}/ratings'.format(imdb_id), headers=trakt_headers).json()['rating'])[:3] if cat == 'tv' and imdb_id else '0.0'
-    season_info = ['第{}季 - 共{}集'.format(item.get('season_number'), item.get('episode_count')) for item in res.get('seasons', [])]
+        imdb_id = res.get('external_ids', {}).get('imdb_id', '')
+        if cat == 'movie':
+            imdb_rating = get_imdb_rating(imdb_id) if cat == 'movie' else ''
+        if cat == 'tv':
+            trakt_headers = {'trakt-api-key': '4fb92befa9b5cf6c00c1d3fecbd96f8992c388b4539f5ed34431372bbee1eca8'}
+            trakt_rating = str(requests.get('https://api.trakt.tv/shows/{}/ratings'.format(imdb_id), headers=trakt_headers).json()['rating'])[:3] if imdb_id else '0.0'
+            season_info = ['第{}季 - 共{}集'.format(item.get('season_number'), item.get('episode_count')) for item in res.get('seasons', [])]
     birthday = res.get('birthday', '')
     deathday = res.get('deathday', '')
     a_works = [] 
@@ -126,31 +134,31 @@ def get_detail(cat, tmdb_id, lang='en-US'):
         d_credits_fixed.sort(reverse=True, key=get_year)
         d_works = ['{} - {}'.format(get_year(item), item.get('name', item.get('title'))) for item in d_credits_fixed[:10] if get_year(item)]
     dic = {
-            'poster': res.get('poster_path'),
-            'profile': res.get('profile_path'),
+            'poster': '' if cat == 'person' else res.get('poster_path'),
+            'profile': '' if not cat == 'person' else res.get('profile_path'),
             'zh_name': zh_name+' ' if not zh_name == name else '',
             'name': name,
-            'year': date[:4],
+            'year': '' if cat == 'person' else date[:4],
             'des': zh_trans.get('overview') if zh_trans.get('overview') else res.get('overview', ''),
-            'trailer': yt_url.format(yt_key) if yt_key else '',
-            'director': get_zh_name(next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {}).get('name', '')),
-            'genres': ' '.join(genres[:2]),
-            'country': dict(countries_for_language('zh_CN')).get(next((item for item in res.get('production_countries', [])), {}).get('iso_3166_1'), ''),
-            'lang': langcode.get(res.get('original_language'), ''),
+            'trailer': '' if not yt_key else yt_url.format(yt_key),
+            'director': '' if cat == 'person' else get_zh_name(next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {}).get('name', '')),
+            'genres': '' if cat == 'person' else ' '.join(genres[:2]),
+            'country': dict(countries_for_language('zh_CN')).get(next((item for item in res.get('production_countries', [])), {}).get('iso_3166_1'), '') if not cat == 'person' else '',
+            'lang': '' if cat == 'person' else langcode.get(res.get('original_language'), ''),
             'date': date,
             'lenth': res.get('runtime', '') or next((i for i in res.get('episode_run_time', [])), ''),
-            'creator': get_zh_name(next((item for item in res.get('created_by', [])), {}).get('name', '')) if cat == 'tv' else '',
-            'cast': '\n         '.join(cast),
-            'imdb_rating': '#IMDB_{} {}'.format(imdb_rating[:1], imdb_rating) if imdb_rating else '',
-            'trakt_rating': '#Trakt_'+trakt_rating[:1]+' '+trakt_rating if not trakt_rating == '0.0' else '',
-            'network': re.sub(' ', '_', next((i for i in res.get('networks', [])), {}).get('name', '')),
+            'creator': '' if not cat == 'tv' else get_zh_name(next((item for item in res.get('created_by', [])), {}).get('name', '')),
+            'cast': '' if cat == 'person' else '\n         '.join(cast),
+            'imdb_rating': '' if not imdb_rating else '#IMDB_{} {}'.format(imdb_rating[:1], imdb_rating),
+            'trakt_rating': '' if trakt_rating == '0.0' else '#Trakt_'+trakt_rating[:1]+' '+trakt_rating,
+            'network': '' if not cat == 'tv' else re.sub(' ', '_', next((i for i in res.get('networks', [])), {}).get('name', '')),
             'status': status_dic.get(res.get('status'), ''),
-            'season_info': '\n'.join(season_info),
+            'season_info': '' if not cat == 'tv' else '\n'.join(season_info),
             'birthday': birthday,
             'deathday': deathday,
             'age': get_age(birthday, deathday) if birthday else '',
-            'a_works': '\n'.join(a_works),
-            'd_works': '\n'.join(d_works),
+            'a_works': '' if not cat == 'person' else '\n'.join(a_works),
+            'd_works': '' if not cat == 'person' else '\n'.join(d_works),
             'link': 'https://www.themoviedb.org/{}/{}'.format(cat, tmdb_id),
             'backdrop': backdrop or res.get('poster_path'),
             'title_list': title_list
@@ -192,7 +200,7 @@ async def movie_info(event):
     info += '国家 {}\n'.format(d.get('country')) if d.get('country') else ''
     info += '语言 {}\n'.format(d.get('lang')) if d.get('lang') else ''
     info += '上映 {}\n'.format(d.get('date')) if d.get('date') else ''
-    info += '片长 {}\n'.format(d.get('lenth')) if d.get('lenth') else ''
+    info += '片长 {}分钟\n'.format(d.get('lenth')) if d.get('lenth') else ''
     info += '演员 {}'.format(d.get('cast')) if d.get('cast') else ''
     info += '\n\n{}'.format(d.get('imdb_rating')) if d.get('imdb_rating') else ''
     await bot.send_message(chat_id, info, file=poster)
@@ -216,7 +224,7 @@ async def tv_info(event):
     info += '网络 #{}\n'.format(d.get('network')) if d.get('network') else ''
     info += '状况 {}\n'.format(d.get('status')) if d.get('status') else ''
     info += '首播 {}\n'.format(d.get('date')) if d.get('date') else ''
-    info += '集长 {}\n'.format(d.get('lenth')) if d.get('lenth') else ''
+    info += '集长 {}分钟\n'.format(d.get('lenth')) if d.get('lenth') else ''
     info += '演员 {}'.format(d.get('cast')) if d.get('cast') else ''
     info += '\n\n分季概况：\n{}'.format(d.get('season_info')) if d.get('season_info') else ''
     info += '\n\n{}'.format(d.get('trakt_rating')) if d.get('trakt_rating') else ''
