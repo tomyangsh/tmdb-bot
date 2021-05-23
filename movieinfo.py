@@ -6,9 +6,6 @@ from io import BytesIO
 
 from datetime import date
 
-from langdetect import detect
-from langdetect import DetectorFactory
-
 from telethon import TelegramClient, events
 
 from country_list import countries_for_language
