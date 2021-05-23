@@ -1,0 +1,16 @@
+[Unit]
+Description=Telegram TMDB Info Bot
+
+[Service]
+Type=simple
+Environment="TOKEN=xxx"
+Environment="APP_ID=xxx"
+Environment="APP_HASH=xxx"
+Environment="TMDB_KEY=xxx"
+Environment="TRAKT_KEY=xxx"
+WorkingDirectory=/path/to/tmdb-bot/
+ExecStart=/usr/bin/python3 /path/to/tmdb-bot/tmdb.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
