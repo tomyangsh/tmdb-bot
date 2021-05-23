@@ -16,7 +16,6 @@ from country_list import countries_for_language
 token = os.getenv("TOKEN")
 app_id = int(os.getenv("APP_ID"))
 app_hash = os.getenv("APP_HASH")
-deepl_key = os.getenv("DEEPL_KEY")
 tmdb_key = 'b729fb42b650d53389fb933b99f4b072'
 
 id_list = tuple(i.strip("\n") for i in open('movieid'))
@@ -52,12 +51,6 @@ def search(cat, event):
     except Exception as e:
         print(e)
         return None
-
-def get_translation(text):
-    url = 'https://api-free.deepl.com/v2/translate'
-    payload = {'auth_key': deepl_key, 'text': text, 'target_lang': 'ZH'}
-    result = requests.post(url, data=payload).json()['translations'][0]['text']
-    return result
 
 def get_age(birthday, deathday):
     b = date.fromisoformat(birthday)
