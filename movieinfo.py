@@ -86,6 +86,7 @@ def get_zh_name(name):
 def get_detail(cat, tmdb_id, lang='en-US'):
     request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=videos,images,credits,alternative_titles,external_ids,translations,combined_credits&api_key={}&include_image_language=en,null&language={}'.format(cat, tmdb_id, tmdb_key, lang)
     res = requests.get(request_url).json()
+    tmdb_id = res.get('id')
     zh_trans = next((item for item in res.get('translations', {}).get('translations', []) if item.get('iso_3166_1') == 'CN' and item.get('iso_639_1') == 'zh'), {}).get('data', {})
     if cat == 'person':
         zh_name = get_zh_name(res.get('name'))
@@ -105,8 +106,6 @@ def get_detail(cat, tmdb_id, lang='en-US'):
         yt_key = next((item for item in res.get('videos', {}).get('results', {}) if item['type'] == 'Trailer' and item['site'] == 'YouTube'), {}).get('key', '')
         date = res.get('release_date') or res.get('first_air_date') or ''
         genres = ['#'+genres_dic.get(i.get('name')) for i in res.get('genres', [])]
-        for item in res.get('genres', []):
-            genres.append('#'+genres_dic.get(item.get('name')))
         cast = [get_zh_name(item.get('name')) for item in res.get('credits', {}).get('cast', [])[:5]]
         backdrop_list = res.get('images').get('backdrops') or []
         if backdrop_list:
