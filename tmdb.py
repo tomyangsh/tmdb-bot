@@ -292,5 +292,4 @@ async def send_question(event):
         await bot.edit_message(q, '答题超时，答案：{}'.format(zh_title))
 
 if __name__ == '__main__':
-    bot.start()
     bot.run_until_disconnected()
