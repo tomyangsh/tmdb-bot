@@ -111,15 +111,15 @@ def get_detail(cat, tmdb_id, lang='en-US'):
         backdrop_list = res.get('images').get('backdrops') or []
         if backdrop_list:
             backdrop = random.choice(backdrop_list).get('file_path')
-        title_list = [item.get('title') for item in res.get('alternative_titles').get('titles', res.get('alternative_titles').get('results')) or [] if item.get('title')]
-        title_list = [item.get('data').get('title', item.get('data').get('name')) for item in res.get('translations').get('translations') if item.get('data').get('title', item.get('data').get('name'))]
+        title_list.extend([item.get('title') for item in res.get('alternative_titles').get('titles', res.get('alternative_titles').get('results')) or [] if item.get('title')])
+        title_list.extend([item.get('data').get('title', item.get('data').get('name')) for item in res.get('translations').get('translations') if item.get('data').get('title', item.get('data').get('name'))])
         imdb_id = res.get('external_ids', {}).get('imdb_id', '')
         if cat == 'movie':
             imdb_rating = get_imdb_rating(imdb_id) if cat == 'movie' else ''
         if cat == 'tv':
             trakt_headers = {'trakt-api-key': '4fb92befa9b5cf6c00c1d3fecbd96f8992c388b4539f5ed34431372bbee1eca8'}
             trakt_rating = str(requests.get('https://api.trakt.tv/shows/{}/ratings'.format(imdb_id), headers=trakt_headers).json()['rating'])[:3] if imdb_id else '0.0'
-            season_info = ['第{}季 - 共{}集'.format(item.get('season_number'), item.get('episode_count')) for item in res.get('seasons', [])]
+            season_info = ['第{}季 - 共{}集'.format(item.get('season_number'), item.get('episode_count')) for item in res.get('seasons', []) if not item.get('season_number') == 0]
     birthday = res.get('birthday', '')
     deathday = res.get('deathday', '')
     a_works = [] 
@@ -275,10 +275,10 @@ async def send_question(event):
     year = d.get('year')
     genres = d.get('genres')
     link = d.get('link')
-#    try:
-    sender_name = sender.first_name or 'BOSS'
-#    except:
-#        sender_name = 'BOSS'
+    try:
+        sender_name = sender.first_name or 'BOSS'
+    except:
+        sender_name = 'BOSS'
     question = '{} 问，这部{}年的 {} 影片的标题是？(60秒内作答有效)'.format(sender_name, year, genres)
     print(title)
     try:
