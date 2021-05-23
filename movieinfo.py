@@ -16,7 +16,8 @@ from country_list import countries_for_language
 token = os.getenv("TOKEN")
 app_id = int(os.getenv("APP_ID"))
 app_hash = os.getenv("APP_HASH")
-tmdb_key = 'b729fb42b650d53389fb933b99f4b072'
+tmdb_key = os.getenv("TMDB_KEY")
+trakt_key = os.getenv("TRAKT_KEY")
 
 id_list = tuple(i.strip("\n") for i in open('movieid'))
 
@@ -109,7 +110,7 @@ def get_detail(cat, tmdb_id, lang='en-US'):
         if cat == 'movie':
             imdb_rating = get_imdb_rating(imdb_id) if cat == 'movie' else ''
         if cat == 'tv':
-            trakt_headers = {'trakt-api-key': '4fb92befa9b5cf6c00c1d3fecbd96f8992c388b4539f5ed34431372bbee1eca8'}
+            trakt_headers = {'trakt-api-key': trakt_key}
             trakt_rating = str(requests.get('https://api.trakt.tv/shows/{}/ratings'.format(imdb_id), headers=trakt_headers).json()['rating'])[:3] if imdb_id else '0.0'
             season_info = ['第{}季 - 共{}集'.format(item.get('season_number'), item.get('episode_count')) for item in res.get('seasons', []) if not item.get('season_number') == 0]
     birthday = res.get('birthday', '')
