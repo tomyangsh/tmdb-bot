@@ -259,7 +259,7 @@ async def send_question(event):
     tid = str(random.choice(id_list))
     d = get_detail('movie', tid)
     backdrop = get_image(d.get('backdrop'))
-    zh_title = d.get('zh_name')
+    zh_title = d.get('zh_name') or d.get('name')
     title = d.get('name')
     title_list = d.get('title_list')
     year = d.get('year')
@@ -284,7 +284,7 @@ async def send_question(event):
                 for a in title_list:
                     if a != '':
                         if re.match(re.escape(a[:5]), answer, re.IGNORECASE):
-                            reply = '{} 回答正确！\n**{}{} ({})** [链接]({})'.format(responder_name, zh_title, title, year, link)
+                            reply = '{} 回答正确！\n**{} {} ({})** [链接]({})'.format(responder_name, zh_title, title, year, link)
                             await conv.send_message(reply, reply_to=response)
                             return
     except Exception as e:
