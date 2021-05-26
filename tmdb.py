@@ -118,7 +118,7 @@ def get_detail(cat, tmdb_id, lang='en-US'):
     dic = {
             'poster': '' if cat == 'person' else res.get('poster_path'),
             'profile': '' if not cat == 'person' else res.get('profile_path'),
-            'zh_name': zh_name+' ' if not zh_name == name else '',
+            'zh_name': zh_name,
             'name': name,
             'year': '' if cat == 'person' else date[:4],
             'des': zh_trans.get('overview') if zh_trans.get('overview') else res.get('overview', ''),
@@ -171,7 +171,7 @@ async def movie_info(event):
         return None
     d = get_detail('movie', tmdb_id)
     poster = get_image(d.get('poster'))
-    info = '{}{}'.format(d.get('zh_name'), d.get('name'))
+    info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
     info += ' ({})'.format(d.get('year')) if d.get('year') else ''
     info += ' [预告片]({})'.format(d.get('trailer')) if d.get('trailer') else ''
     info += '\n\n{}\n'.format(d.get('des')) if d.get('des') else '\n'
@@ -194,7 +194,7 @@ async def tv_info(event):
         return None
     d = get_detail('tv', tmdb_id)
     poster = get_image(d.get('poster'))
-    info = '{}{}'.format(d.get('zh_name'), d.get('name'))
+    info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
     info += ' ({})'.format(d.get('year')) if d.get('year') else ''
     info += ' [预告片]({})'.format(d.get('trailer')) if d.get('trailer') else ''
     info += '\n\n{}\n'.format(d.get('des')) if d.get('des') else '\n'
@@ -219,7 +219,7 @@ async def actor_info(event):
         return None
     d = get_detail('person', tmdb_id, 'zh-CN')
     profile = get_image(d.get('profile'))
-    info = d.get('zh_name')+d.get('name')
+    info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
     info += '\n出生 {}'.format(d.get('birthday')) if d.get('birthday') else ''
     info += '\n去世 {}'.format(d.get('deathday')) if d.get('deathday') else ''
     info += ' ({}岁)'.format(d.get('age')) if d.get('age') else ''
@@ -235,7 +235,7 @@ async def director_info(event):
         return None
     d = get_detail('person', tmdb_id, 'zh-CN')
     profile = get_image(d.get('profile'))
-    info = d.get('zh_name')+d.get('name')
+    info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
     info += '\n出生 {}'.format(d.get('birthday')) if d.get('birthday') else ''
     info += '\n去世 {}'.format(d.get('deathday')) if d.get('deathday') else ''
     info += ' ({}岁)'.format(d.get('age')) if d.get('age') else ''
