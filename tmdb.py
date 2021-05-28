@@ -64,21 +64,23 @@ def get_year(e):
         year = e.get('first_air_date', '')[:4]
     return year
 
-def get_zh_name(name):
-    name = unidecode.unidecode(name)
-    request_url = 'https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&sites=enwiki&titles={}&props=labels&languages=zh-cn&languagefallback=1&utf8=1&formatversion=2&normalize=1'.format(name)
+def get_zh_name(tmdb_id):
+    request_url = 'https://www.wikidata.org/w/api.php?action=query&format=json&uselang={}&prop=entityterms&generator=search&formatversion=2&gsrsearch=haswbstatement%3A%22P4985%3D{}%22'
+    res = requests.get(request_url.format('zh-cn', tmdb_id)).json().get('query', {}).get('pages', [])
+    wiki_id = next((item.get('title') for item in res), '')
+    request_url = 'https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&ids={}&languages=zh-cn&languagefallback=1&formatversion=2'.format(wiki_id)
     res = requests.get(request_url).json()
-    result= list(res.get('entities', {}).values())
-    name = next((item.get('labels', {}).get('zh-cn', {}).get('value', '') for item in result), '') or name
+    name = res.get('entities', {}).get(wiki_id, {}).get('labels', {}).get('zh-cn', {}).get('value', '')
     return name
 
 def get_detail(cat, tmdb_id, lang='en-US'):
     request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=videos,credits,external_ids,translations,combined_credits&api_key={}&include_image_language=en,null&language={}'.format(cat, tmdb_id, tmdb_key, lang)
     res = requests.get(request_url).json()
     tmdb_id = res.get('id')
+    imdb_id = res.get('external_ids', {}).get('imdb_id', '')
     zh_trans = next((item for item in res.get('translations', {}).get('translations', []) if item.get('iso_3166_1') == 'CN' and item.get('iso_639_1') == 'zh'), {}).get('data', {})
     if cat == 'person':
-        zh_name = get_zh_name(res.get('name'))
+        zh_name = get_zh_name(tmdb_id)
     else:
         zh_name = zh_trans.get('title', zh_trans.get('name', ''))
     name = res.get('original_title') or res.get('original_name') or res.get('name')
@@ -93,8 +95,7 @@ def get_detail(cat, tmdb_id, lang='en-US'):
         yt_key = next((item for item in res.get('videos', {}).get('results', {}) if item['type'] == 'Trailer' and item['site'] == 'YouTube'), {}).get('key', '')
         date = res.get('release_date') or res.get('first_air_date') or ''
         genres = ['#'+genres_dic.get(i.get('name')) for i in res.get('genres', [])]
-        cast = [get_zh_name(item.get('name')) for item in res.get('credits', {}).get('cast', [])[:5]]
-        imdb_id = res.get('external_ids', {}).get('imdb_id', '')
+        cast = [get_zh_name(item.get('id')) or item.get('name') for item in res.get('credits', {}).get('cast', [])[:5]]
         if cat == 'movie':
             imdb_rating = get_imdb_rating(imdb_id) if cat == 'movie' else ''
         if cat == 'tv':
@@ -122,13 +123,13 @@ def get_detail(cat, tmdb_id, lang='en-US'):
             'year': '' if cat == 'person' else date[:4],
             'des': zh_trans.get('overview') if zh_trans.get('overview') else res.get('overview', ''),
             'trailer': '' if not yt_key else yt_url.format(yt_key),
-            'director': '' if cat == 'person' else get_zh_name(next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {}).get('name', '')),
+            'director': '' if cat == 'person' else get_zh_name(next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {}).get('id', '')),
             'genres': '' if cat == 'person' else ' '.join(genres[:2]),
             'country': dict(countries_for_language('zh_CN')).get(next((item for item in res.get('production_countries', [])), {}).get('iso_3166_1'), '') if not cat == 'person' else '',
             'lang': '' if cat == 'person' else langcode.get(res.get('original_language'), ''),
             'date': date,
             'lenth': res.get('runtime', '') or next((i for i in res.get('episode_run_time', [])), ''),
-            'creator': '' if not cat == 'tv' else get_zh_name(next((item for item in res.get('created_by', [])), {}).get('name', '')),
+            'creator': '' if not cat == 'tv' else get_zh_name(next((item for item in res.get('created_by', [])), {}).get('id', '')),
             'cast': '' if cat == 'person' else '\n         '.join(cast),
             'imdb_rating': '' if not imdb_rating else '#IMDB_{} {}'.format(imdb_rating[:1], imdb_rating),
             'trakt_rating': '' if trakt_rating == '0.0' else '#Trakt_'+trakt_rating[:1]+' '+trakt_rating,
