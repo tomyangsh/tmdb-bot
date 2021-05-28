@@ -145,13 +145,9 @@ def get_detail(cat, tmdb_id, lang='en-US'):
     return dic
 
 def get_imdb_rating(imdb_id):
-    imdb_url = 'https://www.imdb.com/title/{}/'
-    imdb_rating_regex = re.compile(r'itemprop="ratingValue".*?>.*?([\d.]+).*?<')
-    imdb_page = requests.get(imdb_url.format(imdb_id)).text
-    match = re.search(imdb_rating_regex, imdb_page)
-    if match:
-        return match.group(1)
-    return ''
+    omdb_url = 'http://www.omdbapi.com/?apikey=3097cace&i={}'.format(imdb_id)
+    res = requests.get(omdb_url).json()
+    return res.get('imdbRating', '')
 
 def get_image(path):
     base_url = 'https://www.themoviedb.org/t/p/original'
