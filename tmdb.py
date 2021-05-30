@@ -80,11 +80,12 @@ def get_backdrop(res):
     if backdrop_list:
         backdrop = random.choice(backdrop_list).get('file_path')
     else:
-        backdrop = ''
+        backdrop = res.get('poster_path')
     return backdrop
 
 def get_title_list(res):
-    title_list = [item.get('title') for item in res.get('alternative_titles').get('titles', res.get('alternative_titles').get('results')) or [] if item.get('title')]
+    title_list = [res.get('original_title')]
+    title_list.extend([item.get('title') for item in res.get('alternative_titles').get('titles', res.get('alternative_titles').get('results')) or [] if item.get('title')])
     title_list.extend([item.get('data').get('title', item.get('data').get('name')) for item in res.get('translations').get('translations') if item.get('data').get('title', item.get('data').get('name'))])
     return title_list
 
@@ -264,7 +265,7 @@ async def send_question(event):
     title_list = get_title_list(res)
     year = res.get('release_date')[:4]
     genre = next((i.get('name') for i in res.get('genres', [])), '')
-    link = 'https://www.themoviedb.org/movie/{}'.format(tid)
+    link = 'https://www.themoviedb.org/movie/{}'.format(res.get('id'))
     try:
         sender_name = sender.first_name or 'BOSS'
     except:
@@ -284,7 +285,7 @@ async def send_question(event):
                 for a in title_list:
                     if a != '':
                         if re.match(re.escape(a[:5]), answer, re.IGNORECASE):
-                            reply = '{} 回答正确！\n**{} {} ({})** [链接]({})'.format(responder_name, zh_title, title, year, link)
+                            reply = '{} 回答正确！\n**{}{} ({})** [链接]({})'.format(responder_name, zh_title+' ' if not zh_title == title else '', title, year, link)
                             await conv.send_message(reply, reply_to=response)
                             return
     except Exception as e:
