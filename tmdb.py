@@ -73,7 +73,7 @@ def get_zh_name(name):
     return name
 
 def get_detail(cat, tmdb_id, lang='en-US'):
-    request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=videos,images,credits,alternative_titles,external_ids,translations,combined_credits&api_key={}&include_image_language=en,null&language={}'.format(cat, tmdb_id, tmdb_key, lang)
+    request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=videos,credits,external_ids,translations,combined_credits&api_key={}&include_image_language=en,null&language={}'.format(cat, tmdb_id, tmdb_key, lang)
     res = requests.get(request_url).json()
     tmdb_id = res.get('id')
     zh_trans = next((item for item in res.get('translations', {}).get('translations', []) if item.get('iso_3166_1') == 'CN' and item.get('iso_639_1') == 'zh'), {}).get('data', {})
@@ -83,7 +83,6 @@ def get_detail(cat, tmdb_id, lang='en-US'):
         zh_name = zh_trans.get('title', zh_trans.get('name', ''))
     name = res.get('original_title') or res.get('original_name') or res.get('name')
     cast = []
-    backdrop = []
     season_info = []
     trakt_rating = '0.0'
     yt_key = ''
@@ -141,7 +140,6 @@ def get_detail(cat, tmdb_id, lang='en-US'):
             'age': get_age(birthday, deathday) if birthday else '',
             'a_works': '' if not cat == 'person' else '\n'.join(a_works),
             'd_works': '' if not cat == 'person' else '\n'.join(d_works),
-            'link': 'https://www.themoviedb.org/{}/{}'.format(cat, tmdb_id)
             }
     return dic
 
