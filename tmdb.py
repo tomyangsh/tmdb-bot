@@ -89,16 +89,22 @@ def get_title_list(res):
     title_list.extend([item.get('data').get('title', item.get('data').get('name')) for item in res.get('translations').get('translations') if item.get('data').get('title', item.get('data').get('name'))])
     return title_list
 
-def get_detail(cat, tmdb_id, lang='en-US'):
-    request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=videos,images,credits,alternative_titles,external_ids,translations,combined_credits&api_key={}&include_image_language=en,null&language={}'.format(cat, tmdb_id, tmdb_key, lang)
+def get_trailer(cat, tmdb_id):
+    yt_url = 'https://www.youtube.com/watch?v={}'
+    request_url = 'https://api.themoviedb.org/3/{}/{}/videos?api_key={}'.format(cat, tmdb_id, tmdb_key)
+    res = requests.get(request_url).json()
+    yt_key = next((i.get('key') for i in res.get('results', []) if i.get('type') == "Trailer" and i.get('site') == "YouTube"), '')
+    return '' if not yt_key else yt_url.format(yt_key)
+
+def get_detail(cat, tmdb_id):
+    request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=credits,alternative_titles,external_ids,combined_credits&api_key={}&include_image_language=en,null&language=zh-CN'.format(cat, tmdb_id, tmdb_key)
     res = requests.get(request_url).json()
     tmdb_id = res.get('id')
     imdb_id = res.get('external_ids', {}).get('imdb_id', '')
-    zh_trans = next((item for item in res.get('translations', {}).get('translations', []) if item.get('iso_3166_1') == 'CN' and item.get('iso_639_1') == 'zh'), {}).get('data', {})
     if cat == 'person':
         zh_name = get_zh_name(tmdb_id)
     else:
-        zh_name = zh_trans.get('title', zh_trans.get('name', ''))
+        zh_name = res.get('title', res.get('name', ''))
     name = res.get('original_title') or res.get('original_name') or res.get('name')
     cast = []
     season_info = []
@@ -107,10 +113,8 @@ def get_detail(cat, tmdb_id, lang='en-US'):
     date = ''
     imdb_rating = ''
     if cat == 'movie' or cat == 'tv':
-        yt_url = 'https://www.youtube.com/watch?v={}'
-        yt_key = next((item for item in res.get('videos', {}).get('results', {}) if item['type'] == 'Trailer' and item['site'] == 'YouTube'), {}).get('key', '')
         date = res.get('release_date') or res.get('first_air_date') or ''
-        genres = ['#'+genres_dic.get(i.get('name')) for i in res.get('genres', [])]
+        genres = ['#'+(genres_dic.get(i.get('name')) or i.get('name')) for i in res.get('genres', [])]
         cast = [get_zh_name(item.get('id')) or item.get('name') for item in res.get('credits', {}).get('cast', [])[:5]]
         if cat == 'movie':
             imdb_rating = get_imdb_rating(imdb_id) if cat == 'movie' else ''
@@ -137,8 +141,8 @@ def get_detail(cat, tmdb_id, lang='en-US'):
             'zh_name': zh_name,
             'name': name,
             'year': '' if cat == 'person' else date[:4],
-            'des': zh_trans.get('overview') if zh_trans.get('overview') else res.get('overview', ''),
-            'trailer': '' if not yt_key else yt_url.format(yt_key),
+            'des': res.get('overview', ''),
+            'trailer': '' if cat == 'person' else get_trailer(cat, tmdb_id),
             'director': '' if cat == 'person' else get_zh_name(next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {}).get('id', '')),
             'genres': '' if cat == 'person' else ' '.join(genres[:2]),
             'country': dict(countries_for_language('zh_CN')).get(next((item for item in res.get('production_countries', [])), {}).get('iso_3166_1'), '') if not cat == 'person' else '',
@@ -163,7 +167,7 @@ def get_detail(cat, tmdb_id, lang='en-US'):
 def get_imdb_rating(imdb_id):
     omdb_url = 'http://www.omdbapi.com/?apikey=3097cace&i={}'.format(imdb_id)
     res = requests.get(omdb_url).json()
-    return res.get('imdbRating', '')
+    return res.get('imdbRating', '') if not res.get('imdbRating', '') == 'N/A' else ''
 
 def get_image(path):
     base_url = 'https://www.themoviedb.org/t/p/original'
@@ -228,7 +232,7 @@ async def actor_info(event):
     if tmdb_id is None:
         await bot.send_message(event.chat_id, '好像没搜到，换个名字试试')
         return None
-    d = get_detail('person', tmdb_id, 'zh-CN')
+    d = get_detail('person', tmdb_id)
     profile = get_image(d.get('profile'))
     info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
     info += '\n出生 {}'.format(d.get('birthday')) if d.get('birthday') else ''
@@ -244,7 +248,7 @@ async def director_info(event):
     if tmdb_id is None:
         await bot.send_message(event.chat_id, '好像没搜到，换个名字试试')
         return None
-    d = get_detail('person', tmdb_id, 'zh-CN')
+    d = get_detail('person', tmdb_id)
     profile = get_image(d.get('profile'))
     info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
     info += '\n出生 {}'.format(d.get('birthday')) if d.get('birthday') else ''
