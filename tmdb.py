@@ -75,6 +75,19 @@ def get_zh_name(tmdb_id):
     name = res.get('entities', {}).get(wiki_id, {}).get('labels', {}).get('zh-cn', {}).get('value', '')
     return name
 
+def get_backdrop(res):
+    backdrop_list = res.get('images').get('backdrops')
+    if backdrop_list:
+        backdrop = random.choice(backdrop_list).get('file_path')
+    else:
+        backdrop = ''
+    return backdrop
+
+def get_title_list(res):
+    title_list = [item.get('title') for item in res.get('alternative_titles').get('titles', res.get('alternative_titles').get('results')) or [] if item.get('title')]
+    title_list.extend([item.get('data').get('title', item.get('data').get('name')) for item in res.get('translations').get('translations') if item.get('data').get('title', item.get('data').get('name'))])
+    return title_list
+
 def get_detail(cat, tmdb_id, lang='en-US'):
     request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=videos,images,credits,alternative_titles,external_ids,translations,combined_credits&api_key={}&include_image_language=en,null&language={}'.format(cat, tmdb_id, tmdb_key, lang)
     res = requests.get(request_url).json()
@@ -87,8 +100,6 @@ def get_detail(cat, tmdb_id, lang='en-US'):
         zh_name = zh_trans.get('title', zh_trans.get('name', ''))
     name = res.get('original_title') or res.get('original_name') or res.get('name')
     cast = []
-    title_list = [name]
-    backdrop = []
     season_info = []
     trakt_rating = '0.0'
     yt_key = ''
@@ -100,11 +111,6 @@ def get_detail(cat, tmdb_id, lang='en-US'):
         date = res.get('release_date') or res.get('first_air_date') or ''
         genres = ['#'+genres_dic.get(i.get('name')) for i in res.get('genres', [])]
         cast = [get_zh_name(item.get('id')) or item.get('name') for item in res.get('credits', {}).get('cast', [])[:5]]
-        backdrop_list = res.get('images').get('backdrops') or []
-        if backdrop_list:
-            backdrop = random.choice(backdrop_list).get('file_path')
-        title_list.extend([item.get('title') for item in res.get('alternative_titles').get('titles', res.get('alternative_titles').get('results')) or [] if item.get('title')])
-        title_list.extend([item.get('data').get('title', item.get('data').get('name')) for item in res.get('translations').get('translations') if item.get('data').get('title', item.get('data').get('name'))])
         if cat == 'movie':
             imdb_rating = get_imdb_rating(imdb_id) if cat == 'movie' else ''
         if cat == 'tv':
@@ -150,9 +156,6 @@ def get_detail(cat, tmdb_id, lang='en-US'):
             'age': get_age(birthday, deathday) if birthday else '',
             'a_works': '' if not cat == 'person' else '\n'.join(a_works),
             'd_works': '' if not cat == 'person' else '\n'.join(d_works),
-            'link': 'https://www.themoviedb.org/{}/{}'.format(cat, tmdb_id),
-            'backdrop': backdrop or res.get('poster_path'),
-            'title_list': title_list
             }
     return dic
 
@@ -254,19 +257,19 @@ async def send_question(event):
     chat_id = event.message.chat_id
     sender = event.message.sender
     tid = str(random.choice(id_list))
-    d = get_detail('movie', tid)
-    backdrop = get_image(d.get('backdrop'))
-    zh_title = d.get('zh_name') or d.get('name')
-    title = d.get('name')
-    title_list = d.get('title_list')
-    year = d.get('year')
-    genres = d.get('genres')
-    link = d.get('link')
+    res = requests.get('https://api.themoviedb.org/3/movie/{}?append_to_response=images,alternative_titles,translations&api_key={}&include_image_language=en,null&language=zh-CN'.format(tid, tmdb_key)).json()
+    backdrop = get_image(get_backdrop(res))
+    zh_title = res.get('title')
+    title = res.get('original_title')
+    title_list = get_title_list(res)
+    year = res.get('release_date')[:4]
+    genre = next((i.get('name') for i in res.get('genres', [])), '')
+    link = 'https://www.themoviedb.org/movie/{}'.format(tid)
     try:
         sender_name = sender.first_name or 'BOSS'
     except:
         sender_name = 'BOSS'
-    question = '{} 问，这部{}年的 {} 影片的标题是？(60秒内作答有效)'.format(sender_name, year, genres)
+    question = '{} 问，这部{}年的 {} 影片的标题是？(60秒内作答有效)'.format(sender_name, year, genre)
     print(title)
     try:
         async with bot.conversation(chat_id, exclusive=False, total_timeout=60) as conv:
