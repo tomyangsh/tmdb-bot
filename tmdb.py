@@ -50,6 +50,19 @@ def get_rarbg():
     f.write(feed.entries[0].guid)
     return item_list
 
+def get_trakt():
+    guid = open('/root/tmdb-bot/guid-trakt', "r").read()
+    feed = feedparser.parse('http://127.0.0.1:1200/trakt/collection/tomyangsh/movies')
+    id_list = []
+    for post in feed.entries:
+        if post.guid == guid:
+            break
+        tmdb_id = re.sub('https://www.themoviedb.org/movie/', '', post.link)
+        id_list.append(tmdb_id)
+    f = open('/root/tmdb-bot/guid-trakt', "w")
+    f.write(feed.entries[0].guid)
+    return id_list
+
 def search(cat, event):
     msg = event.message.text
     arg = re.sub(r'/\w\s*|\s\d\d\d\d', '', msg)
@@ -197,6 +210,19 @@ async def push_rarbg():
     item_list = get_rarbg()
     for item in item_list:
         await bot.send_message(1195256281, item)
+
+@aiocron.crontab('05 * * * *')
+async def push_trakt():
+    id_list = get_trakt()
+    for tmdb_id in id_list:
+        d = get_detail('movie', tmdb_id)
+        poster = get_image(d.get('poster'))
+        info = '团队盘新增影片：\n'
+        info += '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
+        info += ' ({})'.format(d.get('year')) if d.get('year') else ''
+        info += ' [预告片]({})'.format(d.get('trailer')) if d.get('trailer') else ''
+        info += '\n\n{}'.format(d.get('des')) if d.get('des') else ''
+        await bot.send_message(1345466016, info, file=poster)
 
 @bot.on(events.NewMessage(pattern=r'^/m\s'))
 async def movie_info(event):
