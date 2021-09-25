@@ -1,4 +1,4 @@
-import requests, re, json, os, random
+import requests, re, json, os, random, feedparser, aiocron
 
 import unidecode
 
@@ -34,6 +34,21 @@ status_dic = {
         'Canceled': '被砍',
         'In Production': '拍摄中'
         }
+
+def get_rarbg():
+    guid = open('/root/tmdb-bot/guid', "r").read()
+    feed = feedparser.parse('https://rarbg.to/rssdd.php?category=41')
+    item_list = []
+    for post in feed.entries:
+        if post.guid == guid:
+            break
+        if re.search('1080p.*WEB', post.title):
+            title = re.sub('\.|\[rartv\]', ' ', post.title)
+            item = '**'+title+'**\n\n`'+post.link+'`'
+            item_list.append(item)
+    f = open('/root/tmdb-bot/guid', "w")
+    f.write(feed.entries[0].guid)
+    return item_list
 
 def search(cat, event):
     msg = event.message.text
@@ -177,6 +192,12 @@ def get_image(path):
 
 bot = TelegramClient('bot', app_id, app_hash).start(bot_token=token)
 
+@aiocron.crontab('*/30 * * * *')
+async def push_rarbg():
+    item_list = get_rarbg()
+    for item in item_list:
+        await bot.send_message(1195256281, item)
+
 @bot.on(events.NewMessage(pattern=r'^/m\s'))
 async def movie_info(event):
     chat_id = event.message.chat_id
@@ -296,5 +317,4 @@ async def send_question(event):
         print(e)
         await bot.edit_message(q, '答题超时，答案：{}'.format(zh_title))
 
-if __name__ == '__main__':
-    bot.run_until_disconnected()
+bot.run_until_disconnected()
