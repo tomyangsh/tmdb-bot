@@ -51,16 +51,17 @@ def get_rarbg():
     return item_list
 
 def get_trakt():
-    guid = open('/root/tmdb-bot/guid-trakt', "r").read()
-    feed = feedparser.parse('http://127.0.0.1:1200/trakt/collection/tomyangsh/movies')
+    last_id = open('/root/tmdb-bot/last_id', "r").read()
+    trakt_headers = {'trakt-api-key': trakt_key}
+    c = requests.get('https://api.trakt.tv/users/tomyangsh/collection/movies', headers=trakt_headers).json()
     id_list = []
-    for post in feed.entries:
-        if post.guid == guid:
+    for i in reversed(c[-10:]):
+        tmdb_id = i.get('movie').get('ids').get('tmdb')
+        if tmdb_id == last_id:
             break
-        tmdb_id = re.sub('https://www.themoviedb.org/movie/', '', post.link)
         id_list.append(tmdb_id)
-    f = open('/root/tmdb-bot/guid-trakt', "w")
-    f.write(feed.entries[0].guid)
+    f = open('/root/tmdb-bot/last_id', "w")
+    f.write(str(c[-1].get('movie').get('ids').get('tmdb')))
     return id_list
 
 def search(cat, event):
@@ -211,7 +212,7 @@ async def push_rarbg():
     for item in item_list:
         await bot.send_message(1195256281, item)
 
-@aiocron.crontab('05 * * * *')
+@aiocron.crontab('*/20 * * * *')
 async def push_trakt():
     id_list = get_trakt()
     for tmdb_id in id_list:
