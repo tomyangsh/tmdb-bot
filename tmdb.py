@@ -56,7 +56,7 @@ def get_trakt():
     c = requests.get('https://api.trakt.tv/users/tomyangsh/collection/movies', headers=trakt_headers).json()
     id_list = []
     for i in reversed(c[-10:]):
-        tmdb_id = i.get('movie').get('ids').get('tmdb')
+        tmdb_id = str(i.get('movie').get('ids').get('tmdb'))
         if tmdb_id == last_id:
             break
         id_list.append(tmdb_id)
