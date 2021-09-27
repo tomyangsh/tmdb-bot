@@ -1,7 +1,5 @@
 import requests, re, json, os, random, feedparser, aiocron
 
-import unidecode
-
 from io import BytesIO
 
 from datetime import date
