@@ -1,0 +1,5 @@
+requests
+feedparser
+aiocron
+telethon
+country_list
