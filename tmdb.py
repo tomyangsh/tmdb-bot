@@ -4,7 +4,8 @@ from io import BytesIO
 
 from datetime import date
 
-from telethon import TelegramClient, events
+from pyrogram import Client, filters
+from pyrogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from country_list import countries_for_language
 
@@ -31,8 +32,8 @@ status_dic = {
         'In Production': '拍摄中'
         }
 
-def search(cat, event):
-    msg = event.message.text
+def search(cat, message):
+    msg = message.text
     arg = re.sub(r'/\w\s*|\s\d\d\d\d', '', msg)
     result = requests.get('https://api.themoviedb.org/3/search/{}?api_key={}&include_adult=true&query={}'.format(cat, tmdb_key, arg)).json()['results']
     try:
@@ -155,22 +156,22 @@ def get_image(path):
     base_url = 'https://www.themoviedb.org/t/p/original'
     headers = {'User-Agent': 'Kodi Movie scraper by Team Kodi'}
     image = BytesIO(requests.get(base_url+path, headers=headers).content) if path else None
+    if image:
+        image.name = 'image.jpg'
     return image
 
-bot = TelegramClient('bot', app_id, app_hash).start(bot_token=token)
+bot = Client('bot', app_id, app_hash, bot_token=token)
 
-@bot.on(events.NewMessage(pattern=r'^/m\s'))
-async def movie_info(event):
-    chat_id = event.message.chat_id
-    tmdb_id = search('movie', event)
+@bot.on_message(filters.command('m'))
+def movie_info(client, message):
+    tmdb_id = search('movie', message)
     if tmdb_id is None:
-        await bot.send_message(chat_id, '好像没搜到，换个名字试试')
+        bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
         return None
     d = get_detail('movie', tmdb_id)
     poster = get_image(d.get('poster'))
     info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
     info += ' ({})'.format(d.get('year')) if d.get('year') else ''
-    info += ' [预告片]({})'.format(d.get('trailer')) if d.get('trailer') else ''
     info += '\n\n{}\n'.format(d.get('des')) if d.get('des') else '\n'
     info += '\n导演 {}'.format(d.get('director')) if d.get('director') else ''
     info += '\n类型 {}'.format(d.get('genres')) if d.get('genres') else ''
@@ -180,20 +181,23 @@ async def movie_info(event):
     info += '\n片长 {}分钟'.format(d.get('lenth')) if d.get('lenth') else ''
     info += '\n演员 {}'.format(d.get('cast')) if d.get('cast') else ''
     info += '\n\n{}'.format(d.get('imdb_rating')) if d.get('imdb_rating') else ''
-    await bot.send_message(chat_id, info, file=poster)
+    if not poster:
+        bot.send_message(message.chat.id, info)
+        return
+    if d.get('trailer'):
+        bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
+    bot.send_photo(message.chat.id, poster, caption=info) 
 
-@bot.on(events.NewMessage(pattern=r'^/t\s'))
-async def tv_info(event):
-    chat_id = event.message.chat_id
-    tmdb_id = search('tv', event)
+@bot.on_message(filters.command('t'))
+def tv_info(client, message):
+    tmdb_id = search('tv', message)
     if tmdb_id is None:
-        await bot.send_message(chat_id, '好像没搜到，换个名字试试')
+        bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
         return None
     d = get_detail('tv', tmdb_id)
     poster = get_image(d.get('poster'))
     info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
     info += ' ({})'.format(d.get('year')) if d.get('year') else ''
-    info += ' [预告片]({})'.format(d.get('trailer')) if d.get('trailer') else ''
     info += '\n\n{}\n'.format(d.get('des')) if d.get('des') else '\n'
     info += '\n创作 {}'.format(d.get('creator')) if d.get('creator') else ''
     info += '\n类型 {}'.format(d.get('genres')) if d.get('genres') else ''
@@ -205,14 +209,18 @@ async def tv_info(event):
     info += '\n演员 {}'.format(d.get('cast')) if d.get('cast') else ''
     info += '\n\n分季概况：\n{}'.format(d.get('season_info')) if d.get('season_info') else ''
     info += '\n\n{}'.format(d.get('trakt_rating')) if d.get('trakt_rating') else ''
-    await bot.send_message(chat_id, info, file=poster)
+    if not poster:
+        bot.send_message(message.chat.id, info)
+        return
+    if d.get('trailer'):
+        bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
+    bot.send_photo(message.chat.id, poster, caption=info)
 
-@bot.on(events.NewMessage(pattern=r'^/a\s'))
-async def actor_info(event):
-    chat_id = event.message.chat_id
-    tmdb_id = search('person', event)
+@bot.on_message(filters.command('a'))
+def actor_info(client, message):
+    tmdb_id = search('person', message)
     if tmdb_id is None:
-        await bot.send_message(event.chat_id, '好像没搜到，换个名字试试')
+        bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
         return None
     d = get_detail('person', tmdb_id)
     profile = get_image(d.get('profile'))
@@ -221,14 +229,16 @@ async def actor_info(event):
     info += '\n去世 {}'.format(d.get('deathday')) if d.get('deathday') else ''
     info += ' ({}岁)'.format(d.get('age')) if d.get('age') else ''
     info += '\n\n近期作品:\n{}'.format(d.get('a_works')) if d.get('a_works') else ''
-    await bot.send_message(chat_id, info, file=profile)
+    if not profile:
+        bot.send_message(message.chat.id, info)
+        return
+    bot.send_photo(message.chat.id, profile, caption=info)
 
-@bot.on(events.NewMessage(pattern=r'^/d\s'))
-async def director_info(event):
-    chat_id = event.message.chat_id
-    tmdb_id = search('person', event)
+@bot.on_message(filters.command('d'))
+def director_info(client, message):
+    tmdb_id = search('person', message)
     if tmdb_id is None:
-        await bot.send_message(event.chat_id, '好像没搜到，换个名字试试')
+        bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
         return None
     d = get_detail('person', tmdb_id)
     profile = get_image(d.get('profile'))
@@ -237,7 +247,9 @@ async def director_info(event):
     info += '\n去世 {}'.format(d.get('deathday')) if d.get('deathday') else ''
     info += ' ({}岁)'.format(d.get('age')) if d.get('age') else ''
     info += '\n\n近期作品:\n{}'.format(d.get('d_works')) if d.get('d_works') else ''
-    await bot.send_message(chat_id, info, file=profile)
+    if not profile:
+        bot.send_message(message.chat.id, info)
+        return
+    bot.send_photo(message.chat.id, profile, caption=info)
 
-if __name__ == '__main__':
-    bot.run_until_disconnected()
+bot.run()

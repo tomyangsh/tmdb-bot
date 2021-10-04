@@ -1,4 +1,4 @@
 requests
 feedparser
-telethon
 country_list
+pyrogram
