@@ -168,6 +168,7 @@ def movie_info(client, message):
     if tmdb_id is None:
         bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
         return None
+    bot.send_chat_action(message.chat.id, "typing")
     d = get_detail('movie', tmdb_id)
     poster = get_image(d.get('poster'))
     info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
@@ -194,6 +195,7 @@ def tv_info(client, message):
     if tmdb_id is None:
         bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
         return None
+    bot.send_chat_action(message.chat.id, "typing")
     d = get_detail('tv', tmdb_id)
     poster = get_image(d.get('poster'))
     info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
@@ -222,6 +224,7 @@ def actor_info(client, message):
     if tmdb_id is None:
         bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
         return None
+    bot.send_chat_action(message.chat.id, "typing")
     d = get_detail('person', tmdb_id)
     profile = get_image(d.get('profile'))
     info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
@@ -240,6 +243,7 @@ def director_info(client, message):
     if tmdb_id is None:
         bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
         return None
+    bot.send_chat_action(message.chat.id, "typing")
     d = get_detail('person', tmdb_id)
     profile = get_image(d.get('profile'))
     info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
