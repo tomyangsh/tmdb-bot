@@ -1,1 +1,3 @@
-bot.session
+bot.session*
+guid
+last_id
