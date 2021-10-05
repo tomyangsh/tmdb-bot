@@ -94,6 +94,20 @@ def get_year(e):
         year = e.get('first_air_date', '')[:4]
     return year
 
+def get_digital_date(tmdb_id):
+    digital_date = None
+    digital_date_list = []
+    request_url = 'https://api.themoviedb.org/3/movie/{}/release_dates?api_key={}'.format(tmdb_id, tmdb_key)
+    res = requests.get(request_url).json()
+    for result in res.get('results'):
+        for d in result.get('release_dates'):
+            if d.get('type') == 4:
+                digital_date_list.append(date.fromisoformat(d.get('release_date')[:10]))
+    digital_date_list.sort()
+    if digital_date_list[0] > date.today():
+        digital_date = str(digital_date_list[0])
+    return digital_date
+
 def get_zh_name(tmdb_id):
     request_url = 'https://www.wikidata.org/w/api.php?action=query&format=json&uselang={}&prop=entityterms&generator=search&formatversion=2&gsrsearch=haswbstatement%3A%22P4985%3D{}%22'
     res = requests.get(request_url.format('zh-cn', tmdb_id)).json().get('query', {}).get('pages', [])
@@ -176,6 +190,7 @@ def get_detail(cat, tmdb_id):
             'country': dict(countries_for_language('zh_CN')).get(next((item for item in res.get('production_countries', [])), {}).get('iso_3166_1'), '') if not cat == 'person' else '',
             'lang': '' if cat == 'person' else langcode.get(res.get('original_language'), ''),
             'date': date,
+            'digital_date': '' if not cat == 'movie' else get_digital_date(tmdb_id),
             'lenth': res.get('runtime', '') or next((i for i in res.get('episode_run_time', [])), ''),
             'creator': '' if not cat == 'tv' else get_zh_name(next((item for item in res.get('created_by', [])), {}).get('id', '')),
             'cast': '' if cat == 'person' else '\n         '.join(cast),
@@ -248,7 +263,8 @@ def movie_info(client, message):
     info += '\n上映 {}'.format(d.get('date')) if d.get('date') else ''
     info += '\n片长 {}分钟'.format(d.get('lenth')) if d.get('lenth') else ''
     info += '\n演员 {}'.format(d.get('cast')) if d.get('cast') else ''
-    info += '\n\n{}'.format(d.get('imdb_rating')) if d.get('imdb_rating') else ''
+    info += '\n\n**预计WEB-DL资源上线日期：{}**'.format(d.get('digital_date')) if d.get('digital_date') else ''
+    info += '\n\n{}'.format(d.get('imdb_rating')) if d.get('imdb_rating') and not d.get('digital_date') else ''
     if not poster:
         bot.send_message(message.chat.id, info)
         return
