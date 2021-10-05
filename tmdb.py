@@ -256,4 +256,8 @@ def director_info(client, message):
         return
     bot.send_photo(message.chat.id, profile, caption=info)
 
+@bot.on_callback_query()
+def answer(client, callback_query):
+    bot.send_message(callback_query.message.chat.id, callback_query.data)
+
 bot.run()
