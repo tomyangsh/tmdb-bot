@@ -104,8 +104,11 @@ def get_digital_date(tmdb_id):
             if d.get('type') == 4:
                 digital_date_list.append(date.fromisoformat(d.get('release_date')[:10]))
     digital_date_list.sort()
-    if digital_date_list[0] > date.today():
-        digital_date = str(digital_date_list[0])
+    try:
+        if digital_date_list[0] > date.today():
+            digital_date = str(digital_date_list[0])
+    except:
+        return None
     return digital_date
 
 def get_zh_name(tmdb_id):
