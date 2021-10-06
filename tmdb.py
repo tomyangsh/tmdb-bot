@@ -182,7 +182,7 @@ def get_detail(cat, tmdb_id):
             'name': name,
             'year': '' if cat == 'person' else date[:4],
             'des': res.get('overview', ''),
-            'trailer': '' if cat == 'person' and not yt_key else yt_url.format(yt_key),
+            'trailer': '' if cat == 'person' or not yt_key else yt_url.format(yt_key),
             'director': '' if cat == 'person' else get_zh_name(next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {}).get('id', '')),
             'genres': '' if cat == 'person' else ' '.join(genres[:2]),
             'country': dict(countries_for_language('zh_CN')).get(next((item for item in res.get('production_countries', [])), {}).get('iso_3166_1'), '') if not cat == 'person' else '',
@@ -268,6 +268,7 @@ def movie_info(client, message):
         return
     if d.get('trailer'):
         bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
+        return
     bot.send_photo(message.chat.id, poster, caption=info) 
 
 @bot.on_message(filters.command('t'))
@@ -297,6 +298,7 @@ def tv_info(client, message):
         return
     if d.get('trailer'):
         bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
+        return
     bot.send_photo(message.chat.id, poster, caption=info)
 
 @bot.on_message(filters.command('a'))
