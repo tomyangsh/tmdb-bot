@@ -72,15 +72,8 @@ def get_zh_name(tmdb_id):
     name = res.get('entities', {}).get(wiki_id, {}).get('labels', {}).get('zh-cn', {}).get('value', '')
     return name
 
-def get_trailer(cat, tmdb_id):
-    yt_url = 'https://www.youtube.com/watch?v={}'
-    request_url = 'https://api.themoviedb.org/3/{}/{}/videos?api_key={}'.format(cat, tmdb_id, tmdb_key)
-    res = requests.get(request_url).json()
-    yt_key = next((i.get('key') for i in res.get('results', []) if i.get('type') == "Trailer" and i.get('site') == "YouTube"), '')
-    return '' if not yt_key else yt_url.format(yt_key)
-
 def get_detail(cat, tmdb_id):
-    request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=credits,alternative_titles,external_ids,combined_credits&api_key={}&include_image_language=en,null&language=zh-CN'.format(cat, tmdb_id, tmdb_key)
+    request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=credits,alternative_titles,external_ids,combined_credits,videos&api_key={}&include_image_language=en,null&include_video_language=en&language=zh-CN'.format(cat, tmdb_id, tmdb_key)
     res = requests.get(request_url).json()
     tmdb_id = res.get('id')
     imdb_id = res.get('external_ids', {}).get('imdb_id', '')
@@ -99,6 +92,8 @@ def get_detail(cat, tmdb_id):
         date = res.get('release_date') or res.get('first_air_date') or ''
         genres = ['#'+(genres_dic.get(i.get('name')) or i.get('name')) for i in res.get('genres', [])]
         cast = [get_zh_name(item.get('id')) or item.get('name') for item in res.get('credits', {}).get('cast', [])[:5]]
+        yt_url = 'https://www.youtube.com/watch?v={}'
+        yt_key = next((i.get('key') for i in res.get('videos').get('results') if i.get('type') == "Trailer" and i.get('site') == "YouTube"), '')
         if cat == 'movie':
             imdb_rating = get_imdb_rating(imdb_id) if cat == 'movie' else ''
         if cat == 'tv':
@@ -125,7 +120,7 @@ def get_detail(cat, tmdb_id):
             'name': name,
             'year': '' if cat == 'person' else date[:4],
             'des': res.get('overview', ''),
-            'trailer': '' if cat == 'person' else get_trailer(cat, tmdb_id),
+            'trailer': '' if cat == 'person' and not yt_key else yt_url.format(yt_key),
             'director': '' if cat == 'person' else get_zh_name(next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {}).get('id', '')),
             'genres': '' if cat == 'person' else ' '.join(genres[:2]),
             'country': dict(countries_for_language('zh_CN')).get(next((item for item in res.get('production_countries', [])), {}).get('iso_3166_1'), '') if not cat == 'person' else '',
