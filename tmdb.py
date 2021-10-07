@@ -76,7 +76,6 @@ def get_detail(cat, tmdb_id):
     request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=credits,alternative_titles,external_ids,combined_credits,videos&api_key={}&include_image_language=en,null&include_video_language=en&language=zh-CN'.format(cat, tmdb_id, tmdb_key)
     res = requests.get(request_url).json()
     tmdb_id = res.get('id')
-    imdb_id = res.get('external_ids', {}).get('imdb_id', '')
     if cat == 'person':
         zh_name = get_zh_name(tmdb_id)
     else:
@@ -84,21 +83,15 @@ def get_detail(cat, tmdb_id):
     name = res.get('original_title') or res.get('original_name') or res.get('name')
     cast = []
     season_info = []
-    trakt_rating = '0.0'
     yt_key = ''
     date = ''
-    imdb_rating = ''
     if cat == 'movie' or cat == 'tv':
         date = res.get('release_date') or res.get('first_air_date') or ''
         genres = ['#'+(genres_dic.get(i.get('name')) or i.get('name')) for i in res.get('genres', [])]
-        cast = [get_zh_name(item.get('id')) or item.get('name') for item in res.get('credits', {}).get('cast', [])[:5]]
+        cast = [get_zh_name(item.get('id')) or item.get('name') for item in res.get('credits', {}).get('cast', [])[:6]]
         yt_url = 'https://www.youtube.com/watch?v={}'
         yt_key = next((i.get('key') for i in res.get('videos').get('results') if i.get('type') == "Trailer" and i.get('site') == "YouTube"), '')
-        if cat == 'movie':
-            imdb_rating = get_imdb_rating(imdb_id) if cat == 'movie' else ''
         if cat == 'tv':
-            trakt_headers = {'trakt-api-key': trakt_key}
-            trakt_rating = str(requests.get('https://api.trakt.tv/shows/{}/ratings'.format(imdb_id), headers=trakt_headers).json()['rating'])[:3] if imdb_id else '0.0'
             season_info = ['第{}季 - 共{}集'.format(item.get('season_number'), item.get('episode_count')) for item in res.get('seasons', []) if not item.get('season_number') == 0]
     birthday = res.get('birthday', '')
     deathday = res.get('deathday', '')
@@ -129,8 +122,7 @@ def get_detail(cat, tmdb_id):
             'lenth': res.get('runtime', '') or next((i for i in res.get('episode_run_time', [])), ''),
             'creator': '' if not cat == 'tv' else get_zh_name(next((item for item in res.get('created_by', [])), {}).get('id', '')),
             'cast': '' if cat == 'person' else '\n         '.join(cast),
-            'imdb_rating': '' if not imdb_rating else '#IMDB_{} {}'.format(imdb_rating[:1], imdb_rating),
-            'trakt_rating': '' if trakt_rating == '0.0' else '#Trakt_'+trakt_rating[:1]+' '+trakt_rating,
+            'rating': '' if cat == 'person' else res.get('vote_average'),
             'network': '' if not cat == 'tv' else re.sub(' ', '_', next((i for i in res.get('networks', [])), {}).get('name', '')),
             'status': status_dic.get(res.get('status'), ''),
             'season_info': '' if not cat == 'tv' else '\n'.join(season_info),
@@ -141,11 +133,6 @@ def get_detail(cat, tmdb_id):
             'd_works': '' if not cat == 'person' else '\n'.join(d_works),
             }
     return dic
-
-def get_imdb_rating(imdb_id):
-    omdb_url = 'http://www.omdbapi.com/?apikey=3097cace&i={}'.format(imdb_id)
-    res = requests.get(omdb_url).json()
-    return res.get('imdbRating', '') if not res.get('imdbRating', '') == 'N/A' else ''
 
 def get_image(path):
     base_url = 'https://www.themoviedb.org/t/p/original'
@@ -175,8 +162,8 @@ def movie_info(client, message):
     info += '\n语言 {}'.format(d.get('lang')) if d.get('lang') else ''
     info += '\n上映 {}'.format(d.get('date')) if d.get('date') else ''
     info += '\n片长 {}分钟'.format(d.get('lenth')) if d.get('lenth') else ''
+    info += '\n评分 {}'.format(d.get('rating')) if not d.get('rating') == 0 else ''
     info += '\n演员 {}'.format(d.get('cast')) if d.get('cast') else ''
-    info += '\n\n{}'.format(d.get('imdb_rating')) if d.get('imdb_rating') else ''
     if not poster:
         bot.send_message(message.chat.id, info)
         return
@@ -204,9 +191,9 @@ def tv_info(client, message):
     info += '\n状况 {}'.format(d.get('status')) if d.get('status') else ''
     info += '\n首播 {}'.format(d.get('date')) if d.get('date') else ''
     info += '\n集长 {}分钟'.format(d.get('lenth')) if d.get('lenth') else ''
+    info += '\n评分 {}'.format(d.get('rating')) if not d.get('rating') == 0 else ''
     info += '\n演员 {}'.format(d.get('cast')) if d.get('cast') else ''
     info += '\n\n分季概况：\n{}'.format(d.get('season_info')) if d.get('season_info') else ''
-    info += '\n\n{}'.format(d.get('trakt_rating')) if d.get('trakt_rating') else ''
     if not poster:
         bot.send_message(message.chat.id, info)
         return
