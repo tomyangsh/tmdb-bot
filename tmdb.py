@@ -34,6 +34,8 @@ status_dic = {
         'In Production': '拍摄中'
         }
 
+gdrive_dic = json.load(open('gdrive_dic'))
+
 def get_rarbg():
     guid = open('/root/tmdb-bot/guid', "r").read()
     feed = feedparser.parse('https://rarbg.to/rssdd.php?category=41')
@@ -182,6 +184,7 @@ def get_detail(cat, tmdb_id):
             'lang': '' if cat == 'person' else langcode.get(res.get('original_language'), ''),
             'date': date,
             'digital_date': '' if not cat == 'movie' else get_digital_date(tmdb_id),
+            'gdrive_id': gdrive_dic.get(str(tmdb_id)),
             'lenth': res.get('runtime', '') or next((i for i in res.get('episode_run_time', [])), ''),
             'creator': '' if not cat == 'tv' else get_zh_name(next((item for item in res.get('created_by', [])), {}).get('id', '')),
             'cast': '' if cat == 'person' else '\n         '.join(cast),
@@ -254,6 +257,9 @@ def movie_info(client, message):
         bot.send_message(message.chat.id, info)
         return
     if d.get('trailer'):
+        if d.get('gdrive_id') and message.chat.id == -1001345466016:
+            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer')), InlineKeyboardButton("团队盘链接", callback_data=d.get('gdrive_id'))]]))
+            return
         bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
         return
     bot.send_photo(message.chat.id, poster, caption=info) 
@@ -328,7 +334,10 @@ def director_info(client, message):
 
 @bot.on_callback_query()
 def answer(client, callback_query):
-    bot.send_message(callback_query.message.chat.id, callback_query.data)
+    if re.search('youtube', callback_query.data):
+        bot.send_message(callback_query.message.chat.id, callback_query.data, reply_to_message_id=callback_query.message.message_id)
+    else:
+        bot.send_message(callback_query.message.chat.id, 'https://drive.google.com/file/d/'+callback_query.data, reply_to_message_id=callback_query.message.message_id)
 '''
 @bot.on(events.NewMessage(pattern=r'^出题$|^出題$'))
 async def send_question(event):
