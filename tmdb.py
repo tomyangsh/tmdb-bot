@@ -92,7 +92,7 @@ def get_detail(cat, tmdb_id):
         yt_url = 'https://www.youtube.com/watch?v={}'
         yt_key = next((i.get('key') for i in res.get('videos').get('results') if i.get('type') == "Trailer" and i.get('site') == "YouTube"), '')
         if cat == 'tv':
-            season_info = ['第{}季 - 共{}集'.format(item.get('season_number'), item.get('episode_count')) for item in res.get('seasons', []) if not item.get('season_number') == 0]
+            season_info = ['第{}季 ({}) - 共{}集'.format(item.get('season_number'), '202X' if not item.get('air_date') else item.get('air_date')[:4], item.get('episode_count')) for item in res.get('seasons', []) if not item.get('season_number') == 0]
     birthday = res.get('birthday', '')
     deathday = res.get('deathday', '')
     a_works = [] 
@@ -112,6 +112,7 @@ def get_detail(cat, tmdb_id):
             'zh_name': zh_name,
             'name': name,
             'year': '' if cat == 'person' else date[:4],
+            'year_last': '' if not cat == 'tv' or not res.get('status') == "Ended" else res.get('last_air_date')[:4],
             'des': res.get('overview', ''),
             'trailer': '' if cat == 'person' or not yt_key else yt_url.format(yt_key),
             'director': '' if cat == 'person' else get_zh_name(next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {}).get('id', '')),
@@ -182,7 +183,7 @@ def tv_info(client, message):
     d = get_detail('tv', tmdb_id)
     poster = get_image(d.get('poster'))
     info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
-    info += ' ({})'.format(d.get('year')) if d.get('year') else ''
+    info += ' ({}-{})'.format(d.get('year'), d.get('year_last')) if d.get('year_last') else ' ({})'.format(d.get('year')) if d.get('year') else ''
     info += '\n\n{}\n'.format(d.get('des')) if d.get('des') else '\n'
     info += '\n创作 {}'.format(d.get('creator')) if d.get('creator') else ''
     info += '\n类型 {}'.format(d.get('genres')) if d.get('genres') else ''
