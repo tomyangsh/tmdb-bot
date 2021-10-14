@@ -259,7 +259,7 @@ def movie_info(client, message):
         return
     if d.get('trailer'):
         if d.get('gdrive_id') and message.chat.id == -1001345466016:
-            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer')), InlineKeyboardButton("团队盘链接", callback_data=d.get('gdrive_id'))]]))
+            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer')), InlineKeyboardButton("团队盘链接", url='https://drive.google.com/file/d/'+d.get('gdrive_id'))]]))
             return
         bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
         return
@@ -335,10 +335,7 @@ def director_info(client, message):
 
 @bot.on_callback_query()
 def answer(client, callback_query):
-    if re.search('youtube', callback_query.data):
-        bot.send_message(callback_query.message.chat.id, callback_query.data, reply_to_message_id=callback_query.message.message_id)
-    else:
-        bot.send_message(callback_query.message.chat.id, 'https://drive.google.com/file/d/'+callback_query.data, reply_to_message_id=callback_query.message.message_id)
+    bot.send_message(callback_query.message.chat.id, callback_query.data, reply_to_message_id=callback_query.message.message_id)
 '''
 @bot.on(events.NewMessage(pattern=r'^出题$|^出題$'))
 async def send_question(event):
