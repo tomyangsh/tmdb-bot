@@ -263,7 +263,8 @@ def movie_info(client, message):
             return
         bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
         return
-    bot.send_photo(message.chat.id, poster, caption=info) 
+    else:
+        bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片（", url='https://www.youtube.com/watch?v=dQw4w9WgXcQ')]]))
 
 @bot.on_message(filters.command('t'))
 def tv_info(client, message):
@@ -293,7 +294,8 @@ def tv_info(client, message):
     if d.get('trailer'):
         bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
         return
-    bot.send_photo(message.chat.id, poster, caption=info)
+    else:
+        bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片（", url='https://www.youtube.com/watch?v=dQw4w9WgXcQ')]]))
 
 @bot.on_message(filters.command('a'))
 def actor_info(client, message):
