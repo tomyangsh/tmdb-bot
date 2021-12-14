@@ -338,6 +338,7 @@ def director_info(client, message):
 @bot.on_callback_query()
 def answer(client, callback_query):
     bot.send_message(callback_query.message.chat.id, callback_query.data, reply_to_message_id=callback_query.message.message_id)
+    print(callback_query.from_user.first_name+' '+callback_query.data)
 '''
 @bot.on(events.NewMessage(pattern=r'^出题$|^出題$'))
 async def send_question(event):
