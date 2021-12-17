@@ -167,11 +167,13 @@ def movie_info(client, message):
     info += '\n演员 {}'.format(d.get('cast')) if d.get('cast') else ''
     if not poster:
         bot.send_message(message.chat.id, info)
-        return
-    if d.get('trailer'):
-        bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
-        return
-    bot.send_photo(message.chat.id, poster, caption=info) 
+    elif d.get('trailer'):
+        if message.chat.type is not 'private':
+            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", url=d.get('trailer'))]]))
+        else:
+            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
+    else:
+        bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片（", url='https://www.youtube.com/watch?v=dQw4w9WgXcQ')]]))
 
 @bot.on_message(filters.command('t'))
 def tv_info(client, message):
@@ -197,11 +199,13 @@ def tv_info(client, message):
     info += '\n\n分季概况：\n{}'.format(d.get('season_info')) if d.get('season_info') else ''
     if not poster:
         bot.send_message(message.chat.id, info)
-        return
-    if d.get('trailer'):
-        bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
-        return
-    bot.send_photo(message.chat.id, poster, caption=info)
+    elif d.get('trailer'):
+        if message.chat.type is not 'private':
+            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", url=d.get('trailer'))]]))
+        else:
+            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
+    else:
+        bot.send_photo(message.chat.id, poster, caption=info)
 
 @bot.on_message(filters.command('a'))
 def actor_info(client, message):
@@ -243,6 +247,7 @@ def director_info(client, message):
 
 @bot.on_callback_query()
 def answer(client, callback_query):
-    bot.send_message(callback_query.message.chat.id, callback_query.data)
+    if callback_query.message.chat.type is 'private':
+        bot.send_message(callback_query.message.chat.id, callback_query.data, reply_to_message_id=callback_query.message.message_id)
 
 bot.run()
