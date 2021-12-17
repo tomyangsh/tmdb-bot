@@ -256,13 +256,13 @@ def movie_info(client, message):
     info += '\n\n**预计WEB-DL资源上线日期：{}**'.format(d.get('digital_date')) if d.get('digital_date') else ''
     if not poster:
         bot.send_message(message.chat.id, info)
-        return
-    if d.get('trailer'):
+    elif d.get('trailer'):
         if d.get('gdrive_id') and message.chat.id == -1001345466016:
-            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer')), InlineKeyboardButton("团队盘链接", url='https://drive.google.com/file/d/'+d.get('gdrive_id'))]]))
-            return
-        bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
-        return
+            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", url=d.get('trailer')), InlineKeyboardButton("团队盘链接", url='https://drive.google.com/file/d/'+d.get('gdrive_id'))]]))
+        elif message.chat.type is not 'private':
+            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", url=d.get('trailer'))]]))
+        else:
+            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
     else:
         bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片（", url='https://www.youtube.com/watch?v=dQw4w9WgXcQ')]]))
 
@@ -290,10 +290,11 @@ def tv_info(client, message):
     info += '\n\n分季概况：\n{}'.format(d.get('season_info')) if d.get('season_info') else ''
     if not poster:
         bot.send_message(message.chat.id, info)
-        return
-    if d.get('trailer'):
-        bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
-        return
+    elif d.get('trailer'):
+        if message.chat.type is not 'private':
+            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", url=d.get('trailer'))]]))
+        else:
+            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
     else:
         bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片（", url='https://www.youtube.com/watch?v=dQw4w9WgXcQ')]]))
 
@@ -337,8 +338,8 @@ def director_info(client, message):
 
 @bot.on_callback_query()
 def answer(client, callback_query):
-    bot.send_message(callback_query.message.chat.id, callback_query.data, reply_to_message_id=callback_query.message.message_id)
-    print(callback_query.from_user.first_name+' '+callback_query.data)
+    if callback_query.message.chat.type is 'private':
+        bot.send_message(callback_query.message.chat.id, callback_query.data, reply_to_message_id=callback_query.message.message_id)
 '''
 @bot.on(events.NewMessage(pattern=r'^出题$|^出題$'))
 async def send_question(event):
