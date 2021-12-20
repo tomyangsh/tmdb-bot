@@ -1,4 +1,4 @@
-import requests, re, json, os, random
+import requests, re, json, os, random, chinese_converter
 
 from io import BytesIO
 
@@ -34,17 +34,13 @@ status_dic = {
 
 def search(cat, message):
     msg = message.text
-    arg = re.sub(r'/\w\s*|\s\d\d\d\d', '', msg)
-    result = requests.get('https://api.themoviedb.org/3/search/{}?api_key={}&include_adult=true&query={}'.format(cat, tmdb_key, arg)).json()['results']
-    try:
-        if re.match(r'\d\d\d\d', msg[-4:]):
-            for i in result:
-                if re.match(msg[-4:], i.get('release_date', '')) or re.match(msg[-4:], i.get('first_air_date', '')):
-                    return i.get('id')
-        else:
-            return result[0].get('id')
-    except Exception as e:
-        print(e)
+    arg = re.sub(r'/\w\s+(\w+)', r'\1', msg) if not re.match(r'/\w\s+\w+\s+\d\d\d\d$', msg) else re.sub(r'/\w\s+(\w+)\s\d\d\d\d$', r'\1', msg)
+    year = None if not re.match(r'/\w\s+\w+\s+\d\d\d\d$', msg) else re.search(r'\d\d\d\d$', msg).group()
+    request_url = 'https://api.themoviedb.org/3/search/{}?api_key={}&include_adult=true&query={}&year={}&first_air_date_year={}'
+    result = requests.get(request_url.format(cat, tmdb_key, arg, year, year)).json()['results'] or requests.get(request_url.format(cat, tmdb_key, chinese_converter.to_simplified(arg), year, year)).json()['results']
+    if result:
+        return result[0].get('id')
+    else:
         return None
 
 def get_age(birthday, deathday):
