@@ -3,3 +3,4 @@ feedparser
 aiocron
 country_list
 pyrogram
+chinese_converter
