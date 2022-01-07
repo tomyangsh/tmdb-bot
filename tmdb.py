@@ -34,8 +34,8 @@ status_dic = {
 
 def search(cat, message):
     msg = message.text
-    arg = re.sub(r'/\w\s+(\w+)', r'\1', msg) if not re.match(r'/\w\s+\w+\s+\d\d\d\d$', msg) else re.sub(r'/\w\s+(\w+)\s\d\d\d\d$', r'\1', msg)
-    year = None if not re.match(r'/\w\s+\w+\s+\d\d\d\d$', msg) else re.search(r'\d\d\d\d$', msg).group()
+    arg = re.match(r'/\w\s+(.+)', msg).group(1) if not re.match(r'/\w\s+.+\s+\d\d\d\d$', msg) else re.match(r'/\w\s+(.+)\s+\d\d\d\d$', msg).group(1)
+    year = None if not re.match(r'/\w\s+.+\s+\d\d\d\d$', msg) else re.search(r'\d\d\d\d$', msg).group()
     request_url = 'https://api.themoviedb.org/3/search/{}?api_key={}&include_adult=true&query={}&year={}&first_air_date_year={}'
     result = requests.get(request_url.format(cat, tmdb_key, arg, year, year)).json()['results'] or requests.get(request_url.format(cat, tmdb_key, chinese_converter.to_simplified(arg), year, year)).json()['results']
     if result:
