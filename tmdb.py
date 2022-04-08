@@ -126,6 +126,7 @@ def get_zh_name(tmdb_id):
         name = res.get('entities', {}).get(wiki_id, {}).get('labels', {}).get('zh-cn', {}).get('value', '')
         if name:
             cur.execute("INSERT INTO person VALUES (%s, %s)", (int(tmdb_id), name))
+            conn.commit()
             return name
 
 def get_backdrop(res):
