@@ -124,7 +124,9 @@ def get_zh_name(tmdb_id):
         request_url = 'https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&ids={}&languages=zh-cn&languagefallback=1&formatversion=2'.format(wiki_id)
         res = requests.get(request_url).json()
         name = res.get('entities', {}).get(wiki_id, {}).get('labels', {}).get('zh-cn', {}).get('value', '')
-        if name:
+        name_lang = res.get('entities', {}).get(wiki_id, {}).get('labels', {}).get('zh-cn', {}).get('language', None)
+        print(name_lang)
+        if not name_lang in (None, 'en'):
             cur.execute("INSERT INTO person VALUES (%s, %s)", (int(tmdb_id), name))
             conn.commit()
             return name
@@ -321,7 +323,7 @@ def actor_info(client, message):
     bot.send_chat_action(message.chat.id, "typing")
     d = get_detail('person', tmdb_id)
     profile = get_image(d.get('profile'))
-    info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
+    info = '{} {}'.format(d.get('zh_name'), d.get('name')) if d.get('zh_name') else d.get('name')
     info += '\n出生 {}'.format(d.get('birthday')) if d.get('birthday') else ''
     info += '\n去世 {}'.format(d.get('deathday')) if d.get('deathday') else ''
     info += ' ({}岁)'.format(d.get('age')) if d.get('age') else ''
@@ -340,7 +342,7 @@ def director_info(client, message):
     bot.send_chat_action(message.chat.id, "typing")
     d = get_detail('person', tmdb_id)
     profile = get_image(d.get('profile'))
-    info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
+    info = '{} {}'.format(d.get('zh_name'), d.get('name')) if d.get('zh_name') else d.get('name')
     info += '\n出生 {}'.format(d.get('birthday')) if d.get('birthday') else ''
     info += '\n去世 {}'.format(d.get('deathday')) if d.get('deathday') else ''
     info += ' ({}岁)'.format(d.get('age')) if d.get('age') else ''
