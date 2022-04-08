@@ -111,13 +111,22 @@ def get_digital_date(tmdb_id):
     return digital_date
 
 def get_zh_name(tmdb_id):
-    request_url = 'https://www.wikidata.org/w/api.php?action=query&format=json&uselang={}&prop=entityterms&generator=search&formatversion=2&gsrsearch=haswbstatement%3A%22P4985%3D{}%22'
-    res = requests.get(request_url.format('zh-cn', tmdb_id)).json().get('query', {}).get('pages', [])
-    wiki_id = next((item.get('title') for item in res), '')
-    request_url = 'https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&ids={}&languages=zh-cn&languagefallback=1&formatversion=2'.format(wiki_id)
-    res = requests.get(request_url).json()
-    name = res.get('entities', {}).get(wiki_id, {}).get('labels', {}).get('zh-cn', {}).get('value', '')
-    return name
+    if not tmdb_id:
+        return None
+    cur.execute("SELECT zh_name FROM person WHERE tmdb_id = %s;", [tmdb_id])
+    try:
+        name = cur.fetchone()[0]
+        return name
+    except:
+        request_url = 'https://www.wikidata.org/w/api.php?action=query&format=json&uselang={}&prop=entityterms&generator=search&formatversion=2&gsrsearch=haswbstatement%3A%22P4985%3D{}%22'
+        res = requests.get(request_url.format('zh-cn', tmdb_id)).json().get('query', {}).get('pages', [])
+        wiki_id = next((item.get('title') for item in res), '')
+        request_url = 'https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&ids={}&languages=zh-cn&languagefallback=1&formatversion=2'.format(wiki_id)
+        res = requests.get(request_url).json()
+        name = res.get('entities', {}).get(wiki_id, {}).get('labels', {}).get('zh-cn', {}).get('value', '')
+        if name:
+            cur.execute("INSERT INTO person VALUES (%s, %s)", (int(tmdb_id), name))
+            return name
 
 def get_backdrop(res):
     backdrop_list = res.get('images').get('backdrops')
