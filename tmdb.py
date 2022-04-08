@@ -1,4 +1,4 @@
-import requests, re, json, os, random, feedparser, aiocron, chinese_converter
+import requests, re, json, os, random, feedparser, aiocron, chinese_converter, psycopg2
 
 from io import BytesIO
 
@@ -34,7 +34,8 @@ status_dic = {
         'In Production': '拍摄中'
         }
 
-gdrive_dic = json.load(open('gdrive_dic'))
+conn = psycopg2.connect("dbname=tmdb user=root")
+cur = conn.cursor()
 
 def get_rarbg():
     guid = open('/root/tmdb-bot/guid', "r").read()
@@ -181,7 +182,7 @@ def get_detail(cat, tmdb_id):
             'lang': '' if cat == 'person' else langcode.get(res.get('original_language'), ''),
             'date': date,
             'digital_date': '' if not cat == 'movie' else get_digital_date(tmdb_id),
-            'gdrive_id': gdrive_dic.get(str(tmdb_id)),
+            'gdrive_key': get_gdrive_key(tmdb_id),
             'lenth': res.get('runtime', '') or next((i for i in res.get('episode_run_time', [])), ''),
             'creator': '' if not cat == 'tv' else get_zh_name(next((item for item in res.get('created_by', [])), {}).get('id', '')),
             'cast': '' if cat == 'person' else '\n         '.join(cast),
@@ -196,6 +197,13 @@ def get_detail(cat, tmdb_id):
             'd_works': '' if not cat == 'person' else '\n'.join(d_works),
             }
     return dic
+
+def get_gdrive_key(tmdb_id):
+    cur.execute("SELECT gdrive_key FROM gdrive_key WHERE tmdb_id = %s;", [tmdb_id])
+    try:
+        return cur.fetchone()[0]
+    except:
+        return None
 
 def get_image(path):
     base_url = 'https://www.themoviedb.org/t/p/original'
@@ -253,8 +261,8 @@ def movie_info(client, message):
     if not poster:
         bot.send_message(message.chat.id, info)
     elif d.get('trailer'):
-        if d.get('gdrive_id') and message.chat.id == -1001345466016:
-            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", url=d.get('trailer')), InlineKeyboardButton("团队盘链接", url='https://drive.google.com/file/d/'+d.get('gdrive_id'))]]))
+        if d.get('gdrive_key') and message.chat.id in (-1001345466016, -1001310480238):
+            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", url=d.get('trailer')), InlineKeyboardButton("团队盘链接", url='https://drive.google.com/file/d/'+d.get('gdrive_key'))]]))
         elif message.chat.type is not 'private':
             bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", url=d.get('trailer'))]]))
         else:
