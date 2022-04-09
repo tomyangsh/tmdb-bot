@@ -248,7 +248,7 @@ async def push_trakt():
     for tmdb_id in id_list:
         d = get_detail('movie', tmdb_id)
         poster = get_image(d.get('poster'))
-        info = '团队盘新增影片：\n'
+        info = '团队盘新增影片： `'+tmdb_id+'`\n'
         info += '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
         info += ' ({})'.format(d.get('year')) if d.get('year') else ''
         info += ' [预告片]({})'.format(d.get('trailer')) if d.get('trailer') else ''
@@ -257,6 +257,8 @@ async def push_trakt():
             await bot.send_message(-1001345466016, info)
             continue
         await bot.send_photo(-1001345466016, poster, caption=info)
+        cur.execute("INSERT INTO gdrive_key(tmdb_id, gdrive_key) VALUES (%s, '0');", [tmdb_id])
+        conn.commit()
 
 @bot.on_message(filters.command('m'))
 def movie_info(client, message):
@@ -360,6 +362,16 @@ def director_info(client, message):
         bot.send_message(message.chat.id, info)
         return
     bot.send_photo(message.chat.id, profile, caption=info)
+
+@bot.on_message(filters.command('update'))
+def update_gdrive_key(client, message):
+    msg = message.text
+    match = re.match(r'/update\s+(\d+)\s+(.+)', msg)
+    if match:
+        cur.execute("UPDATE gdrive_key SET gdrive_key = %s WHERE tmdb_id = %s;", (match.group(2), match.group(1)))
+        if cur.rowcount != 0:
+            conn.commit()
+            bot.send_message(message.chat.id, '['+match.group(1)+'](https://www.themoviedb.org/movie/'+match.group(1)+')\nhttps://drive.google.com/file/d/'+match.group(2))
 
 @bot.on_message(filters.command('top'))
 def credit_top10(client, message):
