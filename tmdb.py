@@ -1,4 +1,4 @@
-import requests, re, json, os, random, feedparser, aiocron, chinese_converter, psycopg2
+import requests, re, json, os, random, feedparser, aiocron, chinese_converter, psycopg2, time
 
 from io import BytesIO
 
@@ -125,7 +125,6 @@ def get_zh_name(tmdb_id):
         res = requests.get(request_url).json()
         name = res.get('entities', {}).get(wiki_id, {}).get('labels', {}).get('zh-cn', {}).get('value', '')
         name_lang = res.get('entities', {}).get(wiki_id, {}).get('labels', {}).get('zh-cn', {}).get('language', None)
-        print(name_lang)
         if not name_lang in (None, 'en'):
             cur.execute("INSERT INTO person VALUES (%s, %s)", (int(tmdb_id), name))
             conn.commit()
@@ -227,6 +226,16 @@ def get_image(path):
 
 bot = Client('bot', app_id, app_hash, bot_token=token)
 
+@aiocron.crontab('0 0 * * *')
+async def clean_db():
+    try:
+        cur.execute("DELETE FROM title_quiz;")
+        conn.commit()
+    except DatabaseError as e:
+        print(e)
+        cur.execute("ROLLBACK")
+        conn.commit()
+
 @aiocron.crontab('*/30 * * * *')
 async def push_rarbg():
     item_list = get_rarbg()
@@ -275,7 +284,7 @@ def movie_info(client, message):
     elif d.get('trailer'):
         if d.get('gdrive_key') and message.chat.id in (-1001345466016, -1001310480238):
             bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", url=d.get('trailer')), InlineKeyboardButton("团队盘链接", url='https://drive.google.com/file/d/'+d.get('gdrive_key'))]]))
-        elif message.chat.type is not 'private':
+        elif message.chat.type != 'private':
             bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", url=d.get('trailer'))]]))
         else:
             bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
@@ -307,7 +316,7 @@ def tv_info(client, message):
     if not poster:
         bot.send_message(message.chat.id, info)
     elif d.get('trailer'):
-        if message.chat.type is not 'private':
+        if message.chat.type != 'private':
             bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", url=d.get('trailer'))]]))
         else:
             bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
@@ -352,16 +361,23 @@ def director_info(client, message):
         return
     bot.send_photo(message.chat.id, profile, caption=info)
 
+@bot.on_message(filters.command('top'))
+def credit_top10(client, message):
+    cur.execute("SELECT name, credit FROM user_info ORDER BY credit DESC LIMIT 5;")
+    list = cur.fetchall()
+    result = '答题得分榜:\n\n'
+    for i in list:
+        result += str(i[1])+'    '+i[0]+'\n'
+    bot.send_message(message.chat.id, result)
+
 @bot.on_callback_query()
 def answer(client, callback_query):
-    if callback_query.message.chat.type is 'private':
+    if callback_query.message.chat.type == 'private':
         bot.send_message(callback_query.message.chat.id, callback_query.data, reply_to_message_id=callback_query.message.message_id)
-'''
-@bot.on(events.NewMessage(pattern=r'^出题$|^出題$'))
-async def send_question(event):
-    chat_id = event.message.chat_id
-    sender = event.message.sender
-    tid = str(random.choice(id_list))
+
+@bot.on_message(filters.regex("^出题$|^出題$"))
+def quiz(client, message):
+    tid = random.choice(id_list)
     res = requests.get('https://api.themoviedb.org/3/movie/{}?append_to_response=images,alternative_titles,translations&api_key={}&include_image_language=en,null&language=zh-CN'.format(tid, tmdb_key)).json()
     backdrop = get_image(get_backdrop(res))
     zh_title = res.get('title')
@@ -370,30 +386,45 @@ async def send_question(event):
     year = res.get('release_date')[:4]
     genre = next((i.get('name') for i in res.get('genres', [])), '')
     link = 'https://www.themoviedb.org/movie/{}'.format(res.get('id'))
+    if message.from_user:
+        sender_name = message.from_user.first_name
+    else:
+        sender_name = message.sender_chat.title
+    question = '{} 问，这部{}年的 {} 影片的标题是？'.format(sender_name, year, genre)
+    bot.send_chat_action(message.chat.id, "typing")
+    msg_id = bot.send_photo(message.chat.id, backdrop, caption=question).message_id
     try:
-        sender_name = sender.first_name or 'BOSS'
-    except:
-        sender_name = 'BOSS'
-    question = '{} 问，这部{}年的 {} 影片的标题是？(60秒内作答有效)'.format(sender_name, year, genre)
-    print(title)
-    try:
-        async with bot.conversation(chat_id, exclusive=False, total_timeout=60) as conv:
-            q = await conv.send_message(question, file=backdrop)
-            while True:
-                response = await conv.get_response()
-                try:
-                    responder_name = response.sender.first_name
-                except:
-                    responder_name = 'BOSS'
-                answer = response.text
-                for a in title_list:
-                    if a != '':
-                        if re.match(re.escape(a[:5]), answer, re.IGNORECASE):
-                            reply = '{} 回答正确！\n**{}{} ({})** [链接]({})'.format(responder_name, zh_title+' ' if not zh_title == title else '', title, year, link)
-                            await conv.send_message(reply, reply_to=response)
-                            return
-    except Exception as e:
+        cur.execute("INSERT INTO title_quiz VALUES (%s, %s, %s, %s, %s, %s)", (msg_id, title_list, zh_title, title, year, res.get('id')))
+        conn.commit()
+    except DatabaseError as e:
         print(e)
-        await bot.edit_message(q, '答题超时，答案：{}'.format(zh_title))
-'''
+        cur.execute("ROLLBACK")
+        conn.commit()
+
+@bot.on_message(filters.reply)
+def quiz_answer(client, message):
+    source_msg = bot.get_messages(message.chat.id, reply_to_message_ids=message.message_id)
+    if source_msg.from_user.is_self:
+        if message.from_user:
+            responder_name = message.from_user.first_name
+        else:
+            responder_name = message.sender_chat.title
+        cur.execute("SELECT title, zh_title, ori_title, year, tmdb_id FROM title_quiz WHERE msg_id = %s;", [source_msg.message_id])
+        res = cur.fetchone()
+        for a in res[0]:
+            if re.match(a[:5], message.text, re.IGNORECASE):
+                reply = '{} 回答正确！\n**{}{} ({})** [链接](https://www.themoviedb.org/movie/{})'.format(responder_name, res[1]+' ' if not res[1] == res[2] else '', res[2], res[3], res[4])
+                bot.send_message(message.chat.id, reply, reply_to_message_id=message.message_id, disable_web_page_preview=True)
+                try:
+                    cur.execute("UPDATE user_info SET credit = credit+1 WHERE id = %s;", [message.from_user.id])
+                    cur.execute("DELETE FROM title_quiz WHERE msg_id = %s;", [source_msg.message_id])
+                    conn.commit()
+                except DatabaseError as e:
+                    print(e)
+                    cur.execute("ROLLBACK")
+                    conn.commit()
+                time.sleep(3)
+                bot.delete_messages(message.chat.id, source_msg.message_id)
+                return
+
 bot.run()
