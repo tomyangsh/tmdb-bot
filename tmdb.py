@@ -15,8 +15,6 @@ app_hash = os.getenv("APP_HASH")
 tmdb_key = os.getenv("TMDB_KEY")
 trakt_key = os.getenv("TRAKT_KEY")
 
-id_list = tuple(i.strip("\n") for i in open('movieid'))
-
 langcode = {}
 for line in open('langcode'):
     key, value = line.split(' ')
@@ -389,8 +387,11 @@ def answer(client, callback_query):
 
 @bot.on_message(filters.regex("^出题$|^出題$"))
 def quiz(client, message):
-    tid = random.choice(id_list)
-    res = requests.get('https://api.themoviedb.org/3/movie/{}?append_to_response=images,alternative_titles,translations&api_key={}&include_image_language=en,null&language=zh-CN'.format(tid, tmdb_key)).json()
+    cur.execute("SELECT COUNT(*) FROM idlist;")
+    id = random.randint(1, int(cur.fetchone()[0]))
+    cur.execute("SELECT imdb_id FROM idlist WHERE id = %s;", [id])
+    imdb_id = cur.fetchone()[0]
+    res = requests.get('https://api.themoviedb.org/3/movie/{}?append_to_response=images,alternative_titles,translations&api_key={}&include_image_language=en,null&language=zh-CN'.format(imdb_id, tmdb_key)).json()
     backdrop = get_image(get_backdrop(res))
     zh_title = res.get('title')
     title = res.get('original_title')
