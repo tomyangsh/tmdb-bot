@@ -231,9 +231,13 @@ def get_image(path):
 
 bot = Client('bot', app_id, app_hash, bot_token=token)
 
-@aiocron.crontab('0 0 * * *')
-async def clean_db():
+@aiocron.crontab('0 14 * * *')
+async def clean():
     try:
+        cur.execute("SELECT group_id, msg_id FROM title_quiz;")
+        list = cur.fetchall()
+        for i in list:
+            await bot.delete_messages(i[0], i[1])
         cur.execute("DELETE FROM title_quiz;")
         conn.commit()
     except DatabaseError as e:
@@ -414,7 +418,7 @@ def quiz(client, message):
     bot.send_chat_action(message.chat.id, "typing")
     msg_id = bot.send_photo(message.chat.id, backdrop, caption=question).message_id
     try:
-        cur.execute("INSERT INTO title_quiz VALUES (%s, %s, %s, %s, %s, %s)", (msg_id, title_list, zh_title, title, year, res.get('id')))
+        cur.execute("INSERT INTO title_quiz VALUES (%s, %s, %s, %s, %s, %s, %s)", (msg_id, title_list, zh_title, title, year, res.get('id'), message.chat.id))
         conn.commit()
     except DatabaseError as e:
         print(e)
