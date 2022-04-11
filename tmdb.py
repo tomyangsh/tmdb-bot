@@ -67,6 +67,13 @@ def get_trakt():
 def search(cat, message):
     msg = message.text
     arg = re.match(r'/\w\s+(.+)', msg).group(1) if not re.match(r'/\w\s+.+\s+\d\d\d\d$', msg) else re.match(r'/\w\s+(.+)\s+\d\d\d\d$', msg).group(1)
+    if cat == 'person':
+        try:
+            cur.execute("SELECT tmdb_id FROM person WHERE zh_name = %s;", [arg])
+            tmdb_id = cur.fetchone()[0]
+            return tmdb_id
+        except:
+            pass
     year = None if not re.match(r'/\w\s+.+\s+\d\d\d\d$', msg) else re.search(r'\d\d\d\d$', msg).group()
     request_url = 'https://api.themoviedb.org/3/search/{}?api_key={}&include_adult=true&query={}&year={}&first_air_date_year={}'
     result = requests.get(request_url.format(cat, tmdb_key, arg, year, year)).json()['results'] or requests.get(request_url.format(cat, tmdb_key, chinese_converter.to_simplified(arg), year, year)).json()['results']
