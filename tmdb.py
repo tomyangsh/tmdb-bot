@@ -66,7 +66,7 @@ def get_trakt():
 
 def search(cat, message):
     msg = message.text
-    arg = re.match(r'/\w\s+(.+)', msg).group(1) if not re.match(r'/\w\s+.+\s+\d\d\d\d$', msg) else re.match(r'/\w\s+(.+)\s+\d\d\d\d$', msg).group(1)
+    arg = re.match(r'/.+\s+(.+)', msg).group(1) if not re.match(r'/.+\s+.+\s+\d\d\d\d$', msg) else re.match(r'/.+\s+(.+)\s+\d\d\d\d$', msg).group(1)
     if cat == 'person':
         try:
             cur.execute("SELECT tmdb_id FROM person WHERE zh_name = %s;", [arg])
@@ -74,7 +74,7 @@ def search(cat, message):
             return tmdb_id
         except:
             pass
-    year = None if not re.match(r'/\w\s+.+\s+\d\d\d\d$', msg) else re.search(r'\d\d\d\d$', msg).group()
+    year = None if not re.match(r'/.+\s+.+\s+\d\d\d\d$', msg) else re.search(r'\d\d\d\d$', msg).group()
     request_url = 'https://api.themoviedb.org/3/search/{}?api_key={}&include_adult=true&query={}&year={}&first_air_date_year={}'
     result = requests.get(request_url.format(cat, tmdb_key, arg, year, year)).json()['results'] or requests.get(request_url.format(cat, tmdb_key, chinese_converter.to_simplified(arg), year, year)).json()['results']
     if result:
@@ -271,6 +271,8 @@ async def push_trakt():
 
 @bot.on_message(filters.command('m'))
 def movie_info(client, message):
+    if not re.match(r'/.+\s+.+', message.text):
+            return None
     tmdb_id = search('movie', message)
     if tmdb_id is None:
         bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
@@ -304,6 +306,8 @@ def movie_info(client, message):
 
 @bot.on_message(filters.command('t'))
 def tv_info(client, message):
+    if not re.match(r'/.+\s+.+', message.text):
+        return None
     tmdb_id = search('tv', message)
     if tmdb_id is None:
         bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
@@ -336,6 +340,8 @@ def tv_info(client, message):
 
 @bot.on_message(filters.command('a'))
 def actor_info(client, message):
+    if not re.match(r'/.+\s+.+', message.text):
+        return None
     tmdb_id = search('person', message)
     if tmdb_id is None:
         bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
@@ -355,6 +361,8 @@ def actor_info(client, message):
 
 @bot.on_message(filters.command('d'))
 def director_info(client, message):
+    if not re.match(r'/.+\s+.+', message.text):
+        return None
     tmdb_id = search('person', message)
     if tmdb_id is None:
         bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
