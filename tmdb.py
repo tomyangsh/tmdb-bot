@@ -15,6 +15,8 @@ app_hash = os.getenv("APP_HASH")
 tmdb_key = os.getenv("TMDB_KEY")
 trakt_key = os.getenv("TRAKT_KEY")
 
+quiz_on = False
+
 langcode = {}
 for line in open('langcode'):
     key, value = line.split(' ')
@@ -233,17 +235,13 @@ bot = Client('bot', app_id, app_hash, bot_token=token)
 
 @aiocron.crontab('0 14 * * *')
 async def clean():
-    try:
-        cur.execute("SELECT group_id, msg_id FROM title_quiz;")
-        list = cur.fetchall()
-        for i in list:
-            await bot.delete_messages(i[0], i[1])
-        cur.execute("DELETE FROM title_quiz;")
-        conn.commit()
-    except DatabaseError as e:
-        print(e)
-        cur.execute("ROLLBACK")
-        conn.commit()
+    for message in app.search_messages(-1001345466016, query="回答正确", from_user="me"):
+        await bot.delete_messages(-1001345466016, message.message_id)
+
+@aiocron.crontab('*/10 * * * *')
+async def reset():
+    global quiz_on
+    quiz_on = False
 
 @aiocron.crontab('*/30 * * * *')
 async def push_rarbg():
@@ -392,71 +390,81 @@ def update_gdrive_key(client, message):
 
 @bot.on_message(filters.command('top'))
 def credit_top10(client, message):
-    cur.execute("SELECT name, credit FROM user_info ORDER BY credit DESC LIMIT 5;")
+    cur.execute("SELECT name, credit FROM user_info ORDER BY credit DESC LIMIT 10;")
     list = cur.fetchall()
     result = '答题得分榜:\n\n'
     for i in list:
         result += str(i[1])+'    '+i[0]+'\n'
     bot.send_message(message.chat.id, result)
 
-@bot.on_callback_query()
-def answer(client, callback_query):
-    if callback_query.message.chat.type == 'private':
-        bot.send_message(callback_query.message.chat.id, callback_query.data, reply_to_message_id=callback_query.message.message_id)
+@bot.on_callback_query(filters.regex(r'^http'))
+def trailer(client, callback_query):
+    bot.send_message(callback_query.message.chat.id, callback_query.data, reply_to_message_id=callback_query.message.message_id)
 
 @bot.on_message(filters.regex("^出题$|^出題$"))
 def quiz(client, message):
-    cur.execute("SELECT COUNT(*) FROM idlist;")
-    id = random.randint(1, int(cur.fetchone()[0]))
-    cur.execute("SELECT imdb_id FROM idlist WHERE id = %s;", [id])
-    imdb_id = cur.fetchone()[0]
-    res = requests.get('https://api.themoviedb.org/3/movie/{}?append_to_response=images,alternative_titles,translations&api_key={}&include_image_language=en,null&language=zh-CN'.format(imdb_id, tmdb_key)).json()
-    backdrop = get_image(get_backdrop(res))
-    zh_title = res.get('title')
-    title = res.get('original_title')
-    title_list = get_title_list(res)
-    year = res.get('release_date')[:4]
-    genre = next((i.get('name') for i in res.get('genres', [])), '')
-    link = 'https://www.themoviedb.org/movie/{}'.format(res.get('id'))
-    if message.from_user:
-        sender_name = message.from_user.first_name
-    else:
-        sender_name = message.sender_chat.title
-    question = '{} 问，这部{}年的 {} 影片的标题是？'.format(sender_name, year, genre)
+    global quiz_on
+    if quiz_on:
+        return
+    cur.execute("SELECT id FROM idlist ORDER BY ID DESC LIMIT 1;")
+    maxid = cur.fetchone()[0]
+    list = [{}, {}, {}, {}]
+    for i in list:
+        id = random.randint(1, maxid)
+        cur.execute("SELECT tmdb_id, zh_title FROM idlist WHERE id = %s;", [id])
+        res = cur.fetchone()
+        i["tmdb_id"] = res[0]
+        i["zh_title"] = res[1]
+        i["callback_data"] = 'False'
+    correct_id = random.randint(0, 3)
+    list[correct_id]["callback_data"] = str(list[correct_id]["tmdb_id"])
+    imginfo = requests.get('https://api.themoviedb.org/3/movie/{}?append_to_response=images&api_key={}&include_image_language=en,null'.format(list[correct_id]["tmdb_id"], tmdb_key)).json()
+    backdrop = get_image(get_backdrop(imginfo))
     bot.send_chat_action(message.chat.id, "typing")
-    msg_id = bot.send_photo(message.chat.id, backdrop, caption=question).message_id
+    bot.send_photo(message.chat.id, backdrop, caption='这部影片的标题是:', reply_markup=InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(list[0]["zh_title"], callback_data=list[0]["callback_data"]),
+            InlineKeyboardButton(list[1]["zh_title"], callback_data=list[1]["callback_data"])
+            ],
+        [
+            InlineKeyboardButton(list[2]["zh_title"], callback_data=list[2]["callback_data"]),
+            InlineKeyboardButton(list[3]["zh_title"], callback_data=list[3]["callback_data"])
+            ]
+        ]
+        )
+        )
+    quiz_on = True
+
+@bot.on_callback_query(filters.regex(r'^False$'))
+def choice_wrong(client, callback_query):
+    bot.answer_callback_query(callback_query.id, text='错了，菜鸡！', show_alert=True)
+    cur.execute("SELECT credit FROM user_info WHERE id = %s;", [callback_query.from_user.id])
+    credit = cur.fetchone()[0]
     try:
-        cur.execute("INSERT INTO title_quiz VALUES (%s, %s, %s, %s, %s, %s, %s)", (msg_id, title_list, zh_title, title, year, res.get('id'), message.chat.id))
-        conn.commit()
+        if credit < 5:
+            cur.execute("UPDATE user_info SET credit = 0 WHERE id = %s;", [callback_query.from_user.id])
+            conn.commit()
+        else:
+            cur.execute("UPDATE user_info SET credit = credit-5 WHERE id = %s;", [callback_query.from_user.id])
+            conn.commit()
     except DatabaseError as e:
         print(e)
         cur.execute("ROLLBACK")
         conn.commit()
 
-@bot.on_message(filters.reply)
-def quiz_answer(client, message):
-    source_msg = bot.get_messages(message.chat.id, reply_to_message_ids=message.message_id)
-    if source_msg.from_user.is_self:
-        if message.from_user:
-            responder_name = message.from_user.first_name
-        else:
-            responder_name = message.sender_chat.title
-        cur.execute("SELECT title, zh_title, ori_title, year, tmdb_id FROM title_quiz WHERE msg_id = %s;", [source_msg.message_id])
-        res = cur.fetchone()
-        for a in res[0]:
-            if re.match(a[:5], message.text, re.IGNORECASE):
-                reply = '{} 回答正确！\n**{}{} ({})** [链接](https://www.themoviedb.org/movie/{})'.format(responder_name, res[1]+' ' if not res[1] == res[2] else '', res[2], res[3], res[4])
-                bot.send_message(message.chat.id, reply, reply_to_message_id=message.message_id, disable_web_page_preview=True)
-                try:
-                    cur.execute("UPDATE user_info SET credit = credit+1 WHERE id = %s;", [message.from_user.id])
-                    cur.execute("DELETE FROM title_quiz WHERE msg_id = %s;", [source_msg.message_id])
-                    conn.commit()
-                except DatabaseError as e:
-                    print(e)
-                    cur.execute("ROLLBACK")
-                    conn.commit()
-                time.sleep(3)
-                bot.delete_messages(message.chat.id, source_msg.message_id)
-                return
+@bot.on_callback_query(filters.regex(r'^\d+'))
+def choice_correct(client, callback_query):
+    cur.execute("SELECT zh_title, ori_title, year FROM idlist WHERE tmdb_id = %s;", [int(callback_query.data)])
+    res = cur.fetchone()
+    bot.edit_message_text(callback_query.message.chat.id, callback_query.message.message_id, '{} 回答正确！\n**{}{} ({})** [链接](https://www.themoviedb.org/movie/{})'.format(callback_query.from_user.first_name, res[0]+' ' if not res[0] == res[1] else '', res[1], res[2], callback_query.data))
+    global quiz_on
+    quiz_on = False
+    try:
+        cur.execute("UPDATE user_info SET credit = credit+1 WHERE id = %s;", [callback_query.from_user.id])
+        conn.commit()
+    except DatabaseError as e:
+        print(e)
+        cur.execute("ROLLBACK")
+        conn.commit()
 
 bot.run()
