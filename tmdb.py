@@ -35,6 +35,8 @@ status_dic = {
 def search(cat, message):
     msg = message.text
     arg = re.match(r'/.+\s+(.+)', msg).group(1) if not re.match(r'/.+\s+.+\s+\d\d\d\d$', msg) else re.match(r'/.+\s+(.+)\s+\d\d\d\d$', msg).group(1)
+    if re.match(r'tt\d+$', arg):
+        return arg
     year = None if not re.match(r'/.+\s+.+\s+\d\d\d\d$', msg) else re.search(r'\d\d\d\d$', msg).group()
     request_url = 'https://api.themoviedb.org/3/search/{}?api_key={}&include_adult=true&query={}&year={}&first_air_date_year={}'
     result = requests.get(request_url.format(cat, tmdb_key, arg, year, year)).json()['results'] or requests.get(request_url.format(cat, tmdb_key, chinese_converter.to_simplified(arg), year, year)).json()['results']
@@ -71,6 +73,8 @@ def get_zh_name(tmdb_id):
 def get_detail(cat, tmdb_id):
     request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=credits,alternative_titles,external_ids,combined_credits,videos&api_key={}&include_image_language=en,null&include_video_language=en&language=zh-CN'.format(cat, tmdb_id, tmdb_key)
     res = requests.get(request_url).json()
+    if not res.get('id'):
+        return None
     tmdb_id = res.get('id')
     if cat == 'person':
         zh_name = get_zh_name(tmdb_id)
@@ -141,16 +145,22 @@ def get_image(path):
 
 bot = Client('bot', app_id, app_hash, bot_token=token)
 
-@bot.on_message(filters.command('m'))
+@bot.on_message(filters.command('m') | filters.regex("^tt\d+$"))
 def movie_info(client, message):
-    if not re.match(r'/.+\s+.+', message.text):
-            return None
-    tmdb_id = search('movie', message)
+    if not re.match(r'/.+\s+.+|tt\d+$', message.text):
+        return None
+    elif re.match(r'tt\d+$', message.text):
+        tmdb_id = message.text
+    else:
+        tmdb_id = search('movie', message)
     if tmdb_id is None:
         bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
         return None
     bot.send_chat_action(message.chat.id, "typing")
     d = get_detail('movie', tmdb_id)
+    if not d:
+        bot.send_message(message.chat.id, 'imdb编号有误')
+        return None
     poster = get_image(d.get('poster'))
     info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
     info += ' ({})'.format(d.get('year')) if d.get('year') else ''
