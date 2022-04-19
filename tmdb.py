@@ -69,6 +69,8 @@ def get_trakt():
 def search(cat, message):
     msg = message.text
     arg = re.match(r'/.+\s+(.+)', msg).group(1) if not re.match(r'/.+\s+.+\s+\d\d\d\d$', msg) else re.match(r'/.+\s+(.+)\s+\d\d\d\d$', msg).group(1)
+    if re.match(r'tt\d+$', arg):
+        return arg
     if cat == 'person':
         try:
             cur.execute("SELECT tmdb_id FROM person WHERE zh_name = %s;", [arg])
@@ -154,6 +156,8 @@ def get_title_list(res):
 def get_detail(cat, tmdb_id):
     request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=credits,alternative_titles,external_ids,combined_credits,videos&api_key={}&include_image_language=en,null&include_video_language=en&language=zh-CN'.format(cat, tmdb_id, tmdb_key)
     res = requests.get(request_url).json()
+    if not res.get('id'):
+        return None
     tmdb_id = res.get('id')
     if cat == 'person':
         zh_name = get_zh_name(tmdb_id)
@@ -235,7 +239,7 @@ bot = Client('bot', app_id, app_hash, bot_token=token)
 
 @aiocron.crontab('0 14 * * *')
 async def clean():
-    for message in app.search_messages(-1001345466016, query="回答正确", from_user="me"):
+    for message in await bot.search_messages(-1001345466016, query="回答正确", from_user="me"):
         await bot.delete_messages(-1001345466016, message.message_id)
 
 @aiocron.crontab('*/10 * * * *')
@@ -267,16 +271,22 @@ async def push_trakt():
         cur.execute("INSERT INTO gdrive_key(tmdb_id, gdrive_key) VALUES (%s, '0');", [tmdb_id])
         conn.commit()
 
-@bot.on_message(filters.command('m'))
+@bot.on_message(filters.command('m') | filters.regex("^tt\d+$"))
 def movie_info(client, message):
-    if not re.match(r'/.+\s+.+', message.text):
-            return None
-    tmdb_id = search('movie', message)
+    if not re.match(r'/.+\s+.+|tt\d+$', message.text):
+        return None
+    elif re.match(r'tt\d+$', message.text):
+        tmdb_id = message.text
+    else:
+        tmdb_id = search('movie', message)
     if tmdb_id is None:
         bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
         return None
     bot.send_chat_action(message.chat.id, "typing")
     d = get_detail('movie', tmdb_id)
+    if not d:
+        bot.send_message(message.chat.id, 'imdb编号有误')
+        return None
     poster = get_image(d.get('poster'))
     info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
     info += ' ({})'.format(d.get('year')) if d.get('year') else ''
