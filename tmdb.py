@@ -410,6 +410,7 @@ def credit_top10(client, message):
 @bot.on_callback_query(filters.regex(r'^http'))
 def trailer(client, callback_query):
     bot.send_message(callback_query.message.chat.id, callback_query.data, reply_to_message_id=callback_query.message.message_id)
+    bot.answer_callback_query(callback_query.id)
 
 @bot.on_message(filters.regex("^出题$|^出題$"))
 def quiz(client, message):
@@ -469,6 +470,7 @@ def choice_correct(client, callback_query):
     bot.edit_message_text(callback_query.message.chat.id, callback_query.message.message_id, '{} 回答正确！\n**{}{} ({})** [链接](https://www.themoviedb.org/movie/{})'.format(callback_query.from_user.first_name, res[0]+' ' if not res[0] == res[1] else '', res[1], res[2], callback_query.data))
     global quiz_on
     quiz_on = False
+    bot.answer_callback_query(callback_query.id)
     try:
         cur.execute("UPDATE user_info SET credit = credit+1 WHERE id = %s;", [callback_query.from_user.id])
         conn.commit()
