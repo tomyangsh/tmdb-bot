@@ -237,11 +237,6 @@ def get_image(path):
 
 bot = Client('bot', app_id, app_hash, bot_token=token)
 
-@aiocron.crontab('0 14 * * *')
-async def clean():
-    for message in await bot.search_messages(-1001345466016, query="回答正确", from_user="me"):
-        await bot.delete_messages(-1001345466016, message.message_id)
-
 @aiocron.crontab('*/10 * * * *')
 async def reset():
     global quiz_on
