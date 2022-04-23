@@ -1,21 +1,18 @@
-import requests, re, json, os, random, feedparser, aiocron, chinese_converter, psycopg2, time
+import requests, re, psycopg2, os, ffmpeg, random, feedparser, aiocron, chinese_converter
 
 from io import BytesIO
 
 from datetime import date
 
 from pyrogram import Client, filters
-from pyrogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultPhoto, InlineQueryResultArticle, InputTextMessageContent
 
 from country_list import countries_for_language
 
-token = os.getenv("TOKEN")
-app_id = int(os.getenv("APP_ID"))
-app_hash = os.getenv("APP_HASH")
+from yt_dlp import YoutubeDL
+
 tmdb_key = os.getenv("TMDB_KEY")
 trakt_key = os.getenv("TRAKT_KEY")
-
-quiz_on = False
 
 langcode = {}
 for line in open('langcode'):
@@ -33,58 +30,6 @@ status_dic = {
         'Canceled': '被砍',
         'In Production': '拍摄中'
         }
-
-conn = psycopg2.connect("dbname=tmdb user=root")
-cur = conn.cursor()
-
-def get_rarbg():
-    guid = open('/root/tmdb-bot/guid', "r").read()
-    feed = feedparser.parse('https://rarbg.to/rssdd.php?category=41')
-    item_list = []
-    for post in feed.entries:
-        if post.guid == guid:
-            break
-        if re.search('1080p.*WEB', post.title):
-            title = re.sub('\.|\[rartv\]', ' ', post.title)
-            item = '**'+title+'**\n\n`'+post.link+'`'
-            item_list.append(item)
-    f = open('/root/tmdb-bot/guid', "w")
-    f.write(feed.entries[0].guid)
-    return item_list
-
-def get_trakt():
-    last_id = open('/root/tmdb-bot/last_id', "r").read()
-    trakt_headers = {'trakt-api-key': trakt_key}
-    c = requests.get('https://api.trakt.tv/users/tomyangsh/collection/movies', headers=trakt_headers).json()
-    id_list = []
-    for i in reversed(c[-10:]):
-        tmdb_id = str(i.get('movie').get('ids').get('tmdb'))
-        if tmdb_id == last_id:
-            break
-        id_list.append(tmdb_id)
-    f = open('/root/tmdb-bot/last_id', "w")
-    f.write(str(c[-1].get('movie').get('ids').get('tmdb')))
-    return id_list
-
-def search(cat, message):
-    msg = message.text
-    arg = re.match(r'/.+\s+(.+)', msg).group(1) if not re.match(r'/.+\s+.+\s+\d\d\d\d$', msg) else re.match(r'/.+\s+(.+)\s+\d\d\d\d$', msg).group(1)
-    if re.match(r'tt\d+$', arg):
-        return arg
-    if cat == 'person':
-        try:
-            cur.execute("SELECT tmdb_id FROM person WHERE zh_name = %s;", [arg])
-            tmdb_id = cur.fetchone()[0]
-            return tmdb_id
-        except:
-            pass
-    year = None if not re.match(r'/.+\s+.+\s+\d\d\d\d$', msg) else re.search(r'\d\d\d\d$', msg).group()
-    request_url = 'https://api.themoviedb.org/3/search/{}?api_key={}&include_adult=true&query={}&year={}&first_air_date_year={}'
-    result = requests.get(request_url.format(cat, tmdb_key, arg, year, year)).json()['results'] or requests.get(request_url.format(cat, tmdb_key, chinese_converter.to_simplified(arg), year, year)).json()['results']
-    if result:
-        return result[0].get('id')
-    else:
-        return None
 
 def get_age(birthday, deathday):
     b = date.fromisoformat(birthday)
@@ -139,21 +84,37 @@ def get_zh_name(tmdb_id):
             conn.commit()
             return name
 
-def get_backdrop(res):
-    backdrop_list = res.get('images').get('backdrops')
-    if backdrop_list:
-        backdrop = random.choice(backdrop_list).get('file_path')
-    else:
-        backdrop = res.get('poster_path')
-    return backdrop
+def get_gdrive_key(tmdb_id):
+    cur.execute("SELECT gdrive_key FROM gdrive_key WHERE tmdb_id = %s;", [tmdb_id])
+    try:
+        return cur.fetchone()[0]
+    except:
+        return None
 
-def get_title_list(res):
-    title_list = [res.get('original_title')]
-    title_list.extend([item.get('title') for item in res.get('alternative_titles').get('titles', res.get('alternative_titles').get('results')) or [] if item.get('title')])
-    title_list.extend([item.get('data').get('title', item.get('data').get('name')) for item in res.get('translations').get('translations') if item.get('data').get('title', item.get('data').get('name'))])
-    return title_list
+def get_metadata(video_path):
+    width, height, duration = 1920, 1080, 0
+    try:
+        video_streams = ffmpeg.probe(video_path, select_streams="v")["streams"][0]
+        height = video_streams["height"]
+        width = video_streams["width"]
+        duration = int(float(video_streams["duration"]))
+    except Exception as e:
+        print(e)
+    return dict(height=height, width=width, duration=duration)
 
-def get_detail(cat, tmdb_id):
+
+def get_thumbnail(video_path):
+    thumbnail = os.path.dirname(__file__)+'/thumbnail.png'
+    ff =    (
+            ffmpeg
+            .input(video_path, ss='1')
+            .output(thumbnail, vframes=1)
+            .overwrite_output()
+            .run(quiet=True)
+        )
+    return thumbnail
+
+def build_msg(cat, tmdb_id):
     request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=credits,alternative_titles,external_ids,combined_credits,videos&api_key={}&include_image_language=en,null&include_video_language=en&language=zh-CN'.format(cat, tmdb_id, tmdb_key)
     res = requests.get(request_url).json()
     if not res.get('id'):
@@ -171,8 +132,11 @@ def get_detail(cat, tmdb_id):
     if cat == 'movie' or cat == 'tv':
         date = res.get('release_date') or res.get('first_air_date') or ''
         genres = ['#'+(genres_dic.get(i.get('name')) or i.get('name')) for i in res.get('genres', [])]
+        director_info = next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {})
+        director_name = get_zh_name(director_info.get('id')) or director_info.get('name', '')
+        creator_info = next((item for item in res.get('created_by', [])), {})
+        creator_name = get_zh_name(creator_info.get('id')) or creator_info.get('name', '')
         cast = [get_zh_name(item.get('id')) or item.get('name') for item in res.get('credits', {}).get('cast', [])[:6]]
-        yt_url = 'https://www.youtube.com/watch?v={}'
         yt_key = next((i.get('key') for i in res.get('videos').get('results') if i.get('type') == "Trailer" and i.get('site') == "YouTube"), '')
         if cat == 'tv':
             season_info = ['第{}季 ({}) - 共{}集'.format(item.get('season_number'), '202X' if not item.get('air_date') else item.get('air_date')[:4], item.get('episode_count')) for item in res.get('seasons', []) if not item.get('season_number') == 0]
@@ -189,53 +153,200 @@ def get_detail(cat, tmdb_id):
         d_credits_fixed = [item for item in d_credits if item.get('job') == 'Director']
         d_credits_fixed.sort(reverse=True, key=get_year)
         d_works = ['{} - {}'.format(get_year(item), item.get('name', item.get('title'))) for item in d_credits_fixed[:10] if get_year(item)]
+    text = '{} {}'.format(zh_name, name) if not zh_name == name else name
+    text += ' ({})'.format('' if cat == 'person' else date[:4]) if date else ''
+    text += '\n\n{}\n'.format(res.get('overview', '')) if res.get('overview') else ''
+    text += '\n导演 {}'.format(director_name) if cat == 'movie' else ''
+    text += '\n主创 {}'.format(creator_name) if cat == 'tv' else ''
+    text += '\n类型 {}'.format(' '.join(genres[:2])) if cat != 'person' else ''
+    text += '\n国家 {}'.format(dict(countries_for_language('zh_CN')).get(next((item for item in res.get('production_countries', [])), {}).get('iso_3166_1'), '')) if cat != 'person' else ''
+    text += '\n语言 {}'.format(langcode.get(res.get('original_language'), '')) if cat != 'person' else ''
+    text += '\n网络 #{}'.format(re.sub(' ', '_', next((i for i in res.get('networks', [])), {}).get('name', ''))) if cat == 'tv' else ''
+    text += '\n状况 {}'.format(status_dic.get(res.get('status'), '')) if cat == 'tv' else ''
+    text += '\n首播 {}'.format(date) if cat == 'tv' else ''
+    text += '\n上映 {}'.format(date) if cat == 'movie' else ''
+    text += '\n片长 {}分钟'.format(res.get('runtime')) if cat == 'movie' and res.get('runtime') else ''
+    text += '\n集长 {}分钟'.format(next((i for i in res.get('episode_run_time', [])))) if cat == 'tv' and res.get('episode_run_time') else ''
+    text += '\n评分 {}'.format(res.get('vote_average')) if cat != 'person' and res.get('vote_average') != 0.0 else ''
+    text += '\n演员 {}'.format('\n         '.join(cast)) if cat != 'person' else ''
+    text += '\n\n**预计WEB-DL资源上线日期：{}**'.format(get_digital_date(tmdb_id)) if cat == 'movie' and get_digital_date(tmdb_id) else ''
+    text += '\n\n分季概况：\n{}'.format('\n'.join(season_info)) if cat == 'tv' else ''
+    text += '\n出生 {}'.format(birthday) if birthday else ''
+    text += '\n去世 {}'.format(deathday) if deathday else ''
+    text += ' ({}岁)'.format(get_age(birthday, deathday)) if cat == 'person' and birthday else ''
+    text += '\n\n近期作品:\n{}'.format('\n'.join(a_works) if len(a_credits) > len(d_credits_fixed) else '\n'.join(d_works)) if cat == 'person' else ''
     dic = {
-            'poster': '' if cat == 'person' else res.get('poster_path'),
-            'profile': '' if not cat == 'person' else res.get('profile_path'),
-            'zh_name': zh_name,
-            'name': name,
-            'year': '' if cat == 'person' else date[:4],
-            'year_last': '' if not cat == 'tv' or not res.get('status') == "Ended" else res.get('last_air_date')[:4],
-            'des': res.get('overview', ''),
-            'trailer': '' if cat == 'person' or not yt_key else yt_url.format(yt_key),
-            'director': '' if cat == 'person' else get_zh_name(next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {}).get('id', '')),
-            'genres': '' if cat == 'person' else ' '.join(genres[:2]),
-            'country': dict(countries_for_language('zh_CN')).get(next((item for item in res.get('production_countries', [])), {}).get('iso_3166_1'), '') if not cat == 'person' else '',
-            'lang': '' if cat == 'person' else langcode.get(res.get('original_language'), ''),
-            'date': date,
-            'digital_date': '' if not cat == 'movie' else get_digital_date(tmdb_id),
+            'name': '{} {}'.format(zh_name, name) if not zh_name == name else name,
+            'img': res.get('poster_path') or res.get('profile_path') or '',
+            'yt_key': '' if cat == 'person' or not yt_key else yt_key,
             'gdrive_key': get_gdrive_key(tmdb_id),
-            'lenth': res.get('runtime', '') or next((i for i in res.get('episode_run_time', [])), ''),
-            'creator': '' if not cat == 'tv' else get_zh_name(next((item for item in res.get('created_by', [])), {}).get('id', '')),
-            'cast': '' if cat == 'person' else '\n         '.join(cast),
-            'rating': '' if cat == 'person' else res.get('vote_average'),
-            'network': '' if not cat == 'tv' else re.sub(' ', '_', next((i for i in res.get('networks', [])), {}).get('name', '')),
-            'status': status_dic.get(res.get('status'), ''),
-            'season_info': '' if not cat == 'tv' else '\n'.join(season_info),
-            'birthday': birthday,
-            'deathday': deathday,
-            'age': get_age(birthday, deathday) if birthday else '',
-            'a_works': '' if not cat == 'person' else '\n'.join(a_works),
-            'd_works': '' if not cat == 'person' else '\n'.join(d_works),
+            'text': re.sub(r'\n\w+\s\n', r'\n', text),
             }
     return dic
 
-def get_gdrive_key(tmdb_id):
-    cur.execute("SELECT gdrive_key FROM gdrive_key WHERE tmdb_id = %s;", [tmdb_id])
-    try:
-        return cur.fetchone()[0]
-    except:
-        return None
+conn = psycopg2.connect("dbname=tmdb user=root")
+cur = conn.cursor()
 
-def get_image(path):
-    base_url = 'https://www.themoviedb.org/t/p/original'
-    headers = {'User-Agent': 'Kodi Movie scraper by Team Kodi'}
-    image = BytesIO(requests.get(base_url+path, headers=headers).content) if path else None
-    if image:
-        image.name = 'image.jpg'
-    return image
+bot = Client('bot')
 
-bot = Client('bot', app_id, app_hash, bot_token=token)
+@bot.on_message(filters.command('start'))
+def welcome(client, message):
+    text = '请直接发送电影、电视剧标题及演员、导演姓名进行搜索，也可以发送以`tt`开头的IMDB编号检索电影信息'
+    bot.send_message(message.chat.id, text)
+
+@bot.on_message(filters.regex("^tt\d+$"))
+def imdb_lookup(client, message):
+    bot.send_chat_action(message.chat.id, "typing")
+    dic = build_msg('movie', message.text)
+    if not dic:
+        bot.send_message(message.chat.id, 'imdb编号有误')
+        return
+    img = 'https://oracle.tomyangsh.pw/img'+dic.get('img')
+    text = dic.get('text')
+    yt_key = dic.get('yt_key')
+    button = []
+    if yt_key:
+        button.append(InlineKeyboardButton("预告片", callback_data=yt_key))
+    reply_markup = InlineKeyboardMarkup([button]) if button else None
+    if img:
+        bot.send_photo(message.chat.id, img, caption=text, reply_markup=reply_markup)
+    else:
+        bot.send_message(message.chat.id, text, reply_markup=reply_markup)
+
+def s_filter(_, __, message):
+    if re.match(r'/tmdb.*\s+\w+', message.text):
+        return True
+    elif (message.chat.type == "private") and (re.match(r'/', message.text) == None):
+        return True
+    else:
+        return False
+
+search_filter = filters.create(s_filter)
+
+@bot.on_message(filters.text & search_filter)
+def send_search_result(client, message):
+    if re.match(r'/tmdb', message.text):
+        query = re.search(r'\s+(.+)', message.text).group(1)
+    else:
+        query = message.text
+    bot.send_chat_action(message.chat.id, "typing")
+    extra = []
+    cur.execute("SELECT tmdb_id FROM person WHERE zh_name = %s;", [query])
+    tmdb_id = cur.fetchone()[0] if cur.rowcount == 1 else None
+    if not tmdb_id:
+        request_url = "https://api.themoviedb.org/3/search/multi?api_key={}&language=zh-CN&query={}"
+        res = requests.get(request_url.format(tmdb_key, query)).json().get('results') or requests.get(request_url.format(tmdb_key, chinese_converter.to_simplified(query))).json().get('results')
+        if not res:
+            bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
+            return None
+        tmdb_id = res[0].get('id')
+        cat = res[0]["media_type"]
+        extra = res[1:5]
+    else:
+        cat = 'person'
+    dic = build_msg(cat, tmdb_id)
+    img = 'https://oracle.tomyangsh.pw/img'+dic.get('img')
+    text = dic.get('text')
+    yt_key = dic.get('yt_key')
+    buttonlist = []
+    yt_url = 'https://www.youtube.com/watch?v='
+    if yt_key:
+        if message.chat.type == "private":
+            buttonlist.append([InlineKeyboardButton("预告片", callback_data=yt_key)])
+        else:
+            buttonlist.append([InlineKeyboardButton("预告片", url=yt_url+yt_key)])
+    if dic.get('gdrive_key') and message.chat.id in (-1001345466016, -1001310480238):
+        buttonlist.append([InlineKeyboardButton("团队盘链接", url='https://drive.google.com/file/d/'+dic.get('gdrive_key'))])
+    if extra:
+        for i in extra:
+            name = '{} {}'.format(i.get("title") or i.get("name"), i.get("release_date", '')[:4] or i.get("first_air_date", '')[:4] or '')
+            cat = i.get("media_type")
+            tmdb_id = str(i.get("id"))
+            buttonlist.append([InlineKeyboardButton(name, callback_data=cat+tmdb_id)])
+    reply_markup = InlineKeyboardMarkup(buttonlist) if buttonlist else None
+    if dic.get('img'):
+        bot.send_photo(message.chat.id, img, caption=text, reply_markup=reply_markup)
+    else:
+        bot.send_message(message.chat.id, text, reply_markup=reply_markup)
+
+@bot.on_callback_query(filters.regex(r'^[a-z]+\d+$'))
+def send_callback_result(client, callback_query):
+    bot.send_chat_action(callback_query.message.chat.id, "typing")
+    match = re.match(r'([a-z]+)(\d+)', callback_query.data)
+    cat = match.group(1)
+    tmdb_id = match.group(2)
+    dic = build_msg(cat, tmdb_id)
+    img = 'https://oracle.tomyangsh.pw/img'+dic.get('img')
+    text = dic.get('text')
+    yt_key = dic.get('yt_key')
+    button = []
+    yt_url = 'https://www.youtube.com/watch?v='
+    if yt_key:
+        if callback_query.message.chat.type == "private":
+            button.append(InlineKeyboardButton("预告片", callback_data=yt_key))
+        else:
+            button.append(InlineKeyboardButton("预告片", url=yt_url+yt_key))
+    if dic.get('gdrive_key') and callback_query.message.chat.id in (-1001345466016, -1001310480238):
+        button.append(InlineKeyboardButton("团队盘链接", url='https://drive.google.com/file/d/'+dic.get('gdrive_key')))
+    reply_markup = InlineKeyboardMarkup([button]) if button else None
+    if dic.get('img'):
+        bot.send_photo(callback_query.message.chat.id, img, caption=text, reply_markup=reply_markup)
+    else:
+        bot.send_message(callback_query.message.chat.id, text, reply_markup=reply_markup)
+    bot.answer_callback_query(callback_query.id)
+
+@bot.on_callback_query(~filters.regex(r'^False$') & filters.regex(r'\D'))
+def send_trailer(client, callback_query):
+    sending = bot.send_message(callback_query.message.chat.id, "发送中。。。")
+    yt_url = 'https://www.youtube.com/watch?v={}'
+    YoutubeDL({"format": "bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/best[vcodec^=avc]/best", "outtmpl": "%(id)s.mp4", "quiet": True}).download(yt_url.format(callback_query.data))
+    bot.send_chat_action(callback_query.message.chat.id, "upload_video")
+    video_name = callback_query.data+'.mp4'
+    meta = get_metadata(video_name)
+    thumbnail = get_thumbnail(video_name)
+    bot.send_video(callback_query.message.chat.id, video_name, thumb=thumbnail, **meta)
+    bot.delete_messages(callback_query.message.chat.id, sending.message_id)
+    bot.answer_callback_query(callback_query.id)
+    os.unlink(video_name)
+
+def get_rarbg():
+    guid = open('/root/tmdb-bot/guid', "r").read()
+    feed = feedparser.parse('https://rarbg.to/rssdd.php?category=41')
+    item_list = []
+    for post in feed.entries:
+        if post.guid == guid:
+            break
+        if re.search('1080p.*WEB', post.title):
+            title = re.sub('\.|\[rartv\]', ' ', post.title)
+            item = '**'+title+'**\n\n`'+post.link+'`'
+            item_list.append(item)
+    f = open('/root/tmdb-bot/guid', "w")
+    f.write(feed.entries[0].guid)
+    return item_list
+
+def get_trakt():
+    last_id = open('/root/tmdb-bot/last_id', "r").read()
+    trakt_headers = {'trakt-api-key': trakt_key}
+    c = requests.get('https://api.trakt.tv/users/tomyangsh/collection/movies', headers=trakt_headers).json()
+    id_list = []
+    for i in reversed(c[-10:]):
+        tmdb_id = str(i.get('movie').get('ids').get('tmdb'))
+        if tmdb_id == last_id:
+            break
+        id_list.append(tmdb_id)
+    f = open('/root/tmdb-bot/last_id', "w")
+    f.write(str(c[-1].get('movie').get('ids').get('tmdb')))
+    return id_list
+
+def get_backdrop(res):
+    backdrop_list = res.get('images').get('backdrops')
+    if backdrop_list:
+        backdrop = random.choice(backdrop_list).get('file_path')
+    else:
+        backdrop = res.get('poster_path')
+    return backdrop
+
+quiz_on = False
 
 @aiocron.crontab('*/10 * * * *')
 async def reset():
@@ -252,136 +363,22 @@ async def push_rarbg():
 async def push_trakt():
     id_list = get_trakt()
     for tmdb_id in id_list:
-        d = get_detail('movie', tmdb_id)
-        poster = get_image(d.get('poster'))
+        dic = build_msg('movie', tmdb_id)
+        img = 'https://oracle.tomyangsh.pw/img'+dic.get('img')
         info = '团队盘新增影片： `'+tmdb_id+'`\n'
-        info += '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
-        info += ' ({})'.format(d.get('year')) if d.get('year') else ''
-        info += ' [预告片]({})'.format(d.get('trailer')) if d.get('trailer') else ''
-        info += '\n\n{}'.format(d.get('des')) if d.get('des') else ''
-        if not poster:
-            await bot.send_message(-1001345466016, info)
+        info += dic.get('text')
+        yt_key = dic.get('yt_key')
+        button = []
+        yt_url = 'https://www.youtube.com/watch?v='
+        if yt_key:
+            button.append(InlineKeyboardButton("预告片", url=yt_url+yt_key))
+        reply_markup = InlineKeyboardMarkup([button]) if button else None
+        if not dic.get('img'):
+            await bot.send_message(-1001345466016, info, reply_markup=reply_markup)
             continue
-        await bot.send_photo(-1001345466016, poster, caption=info)
+        await bot.send_photo(-1001345466016, img, caption=info, reply_markup=reply_markup)
         cur.execute("INSERT INTO gdrive_key(tmdb_id, gdrive_key) VALUES (%s, '0');", [tmdb_id])
         conn.commit()
-
-@bot.on_message(filters.command('m') | filters.regex("^tt\d+$"))
-def movie_info(client, message):
-    if not re.match(r'/.+\s+.+|tt\d+$', message.text):
-        return None
-    elif re.match(r'tt\d+$', message.text):
-        tmdb_id = message.text
-    else:
-        tmdb_id = search('movie', message)
-    if tmdb_id is None:
-        bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
-        return None
-    bot.send_chat_action(message.chat.id, "typing")
-    d = get_detail('movie', tmdb_id)
-    if not d:
-        bot.send_message(message.chat.id, 'imdb编号有误')
-        return None
-    poster = get_image(d.get('poster'))
-    info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
-    info += ' ({})'.format(d.get('year')) if d.get('year') else ''
-    info += '\n\n{}\n'.format(d.get('des')) if d.get('des') else '\n'
-    info += '\n导演 {}'.format(d.get('director')) if d.get('director') else ''
-    info += '\n类型 {}'.format(d.get('genres')) if d.get('genres') else ''
-    info += '\n国家 {}'.format(d.get('country')) if d.get('country') else ''
-    info += '\n语言 {}'.format(d.get('lang')) if d.get('lang') else ''
-    info += '\n上映 {}'.format(d.get('date')) if d.get('date') else ''
-    info += '\n片长 {}分钟'.format(d.get('lenth')) if d.get('lenth') else ''
-    info += '\n评分 {}'.format(d.get('rating')) if not d.get('rating') == 0 else ''
-    info += '\n演员 {}'.format(d.get('cast')) if d.get('cast') else ''
-    info += '\n\n**预计WEB-DL资源上线日期：{}**'.format(d.get('digital_date')) if d.get('digital_date') else ''
-    if not poster:
-        bot.send_message(message.chat.id, info)
-    elif d.get('trailer'):
-        if d.get('gdrive_key') and message.chat.id in (-1001345466016, -1001310480238):
-            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", url=d.get('trailer')), InlineKeyboardButton("团队盘链接", url='https://drive.google.com/file/d/'+d.get('gdrive_key'))]]))
-        elif message.chat.type != 'private':
-            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", url=d.get('trailer'))]]))
-        else:
-            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
-    else:
-        bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片（", url='https://www.youtube.com/watch?v=dQw4w9WgXcQ')]]))
-
-@bot.on_message(filters.command('t'))
-def tv_info(client, message):
-    if not re.match(r'/.+\s+.+', message.text):
-        return None
-    tmdb_id = search('tv', message)
-    if tmdb_id is None:
-        bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
-        return None
-    bot.send_chat_action(message.chat.id, "typing")
-    d = get_detail('tv', tmdb_id)
-    poster = get_image(d.get('poster'))
-    info = '{} {}'.format(d.get('zh_name'), d.get('name')) if not d.get('zh_name') == d.get('name') else d.get('name')
-    info += ' ({}-{})'.format(d.get('year'), d.get('year_last')) if d.get('year_last') else ' ({})'.format(d.get('year')) if d.get('year') else ''
-    info += '\n\n{}\n'.format(d.get('des')) if d.get('des') else '\n'
-    info += '\n创作 {}'.format(d.get('creator')) if d.get('creator') else ''
-    info += '\n类型 {}'.format(d.get('genres')) if d.get('genres') else ''
-    info += '\n国家 {}'.format(d.get('country')) if d.get('country') else ''
-    info += '\n网络 #{}'.format(d.get('network')) if d.get('network') else ''
-    info += '\n状况 {}'.format(d.get('status')) if d.get('status') else ''
-    info += '\n首播 {}'.format(d.get('date')) if d.get('date') else ''
-    info += '\n集长 {}分钟'.format(d.get('lenth')) if d.get('lenth') else ''
-    info += '\n评分 {}'.format(d.get('rating')) if not d.get('rating') == 0 else ''
-    info += '\n演员 {}'.format(d.get('cast')) if d.get('cast') else ''
-    info += '\n\n分季概况：\n{}'.format(d.get('season_info')) if d.get('season_info') else ''
-    if not poster:
-        bot.send_message(message.chat.id, info)
-    elif d.get('trailer'):
-        if message.chat.type != 'private':
-            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", url=d.get('trailer'))]]))
-        else:
-            bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片", callback_data=d.get('trailer'))]]))
-    else:
-        bot.send_photo(message.chat.id, poster, caption=info, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("预告片（", url='https://www.youtube.com/watch?v=dQw4w9WgXcQ')]]))
-
-@bot.on_message(filters.command('a'))
-def actor_info(client, message):
-    if not re.match(r'/.+\s+.+', message.text):
-        return None
-    tmdb_id = search('person', message)
-    if tmdb_id is None:
-        bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
-        return None
-    bot.send_chat_action(message.chat.id, "typing")
-    d = get_detail('person', tmdb_id)
-    profile = get_image(d.get('profile'))
-    info = '{} {}'.format(d.get('zh_name'), d.get('name')) if d.get('zh_name') else d.get('name')
-    info += '\n出生 {}'.format(d.get('birthday')) if d.get('birthday') else ''
-    info += '\n去世 {}'.format(d.get('deathday')) if d.get('deathday') else ''
-    info += ' ({}岁)'.format(d.get('age')) if d.get('age') else ''
-    info += '\n\n近期作品:\n{}'.format(d.get('a_works')) if d.get('a_works') else ''
-    if not profile:
-        bot.send_message(message.chat.id, info)
-        return
-    bot.send_photo(message.chat.id, profile, caption=info)
-
-@bot.on_message(filters.command('d'))
-def director_info(client, message):
-    if not re.match(r'/.+\s+.+', message.text):
-        return None
-    tmdb_id = search('person', message)
-    if tmdb_id is None:
-        bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
-        return None
-    bot.send_chat_action(message.chat.id, "typing")
-    d = get_detail('person', tmdb_id)
-    profile = get_image(d.get('profile'))
-    info = '{} {}'.format(d.get('zh_name'), d.get('name')) if d.get('zh_name') else d.get('name')
-    info += '\n出生 {}'.format(d.get('birthday')) if d.get('birthday') else ''
-    info += '\n去世 {}'.format(d.get('deathday')) if d.get('deathday') else ''
-    info += ' ({}岁)'.format(d.get('age')) if d.get('age') else ''
-    info += '\n\n近期作品:\n{}'.format(d.get('d_works')) if d.get('d_works') else ''
-    if not profile:
-        bot.send_message(message.chat.id, info)
-        return
-    bot.send_photo(message.chat.id, profile, caption=info)
 
 @bot.on_message(filters.command('update'))
 def update_gdrive_key(client, message):
@@ -402,11 +399,6 @@ def credit_top10(client, message):
         result += str(i[1])+'    '+i[0]+'\n'
     bot.send_message(message.chat.id, result)
 
-@bot.on_callback_query(filters.regex(r'^http'))
-def trailer(client, callback_query):
-    bot.send_message(callback_query.message.chat.id, callback_query.data, reply_to_message_id=callback_query.message.message_id)
-    bot.answer_callback_query(callback_query.id)
-
 @bot.on_message(filters.regex("^出题$|^出題$"))
 def quiz(client, message):
     global quiz_on
@@ -425,9 +417,14 @@ def quiz(client, message):
     correct_id = random.randint(0, 3)
     list[correct_id]["callback_data"] = str(list[correct_id]["tmdb_id"])
     imginfo = requests.get('https://api.themoviedb.org/3/movie/{}?append_to_response=images&api_key={}&include_image_language=en,null'.format(list[correct_id]["tmdb_id"], tmdb_key)).json()
-    backdrop = get_image(get_backdrop(imginfo))
+    backdrop = get_backdrop(imginfo)
+    if backdrop:
+        img = 'https://oracle.tomyangsh.pw/img{}'.format(backdrop)
+    else:
+        bot.send_message(message.chat.id, "出题失败。。")
+        return
     bot.send_chat_action(message.chat.id, "typing")
-    bot.send_photo(message.chat.id, backdrop, caption='这部影片的标题是:', reply_markup=InlineKeyboardMarkup([
+    bot.send_photo(message.chat.id, img, caption='这部影片的标题是:', reply_markup=InlineKeyboardMarkup([
         [
             InlineKeyboardButton(list[0]["zh_title"], callback_data=list[0]["callback_data"]),
             InlineKeyboardButton(list[1]["zh_title"], callback_data=list[1]["callback_data"])
