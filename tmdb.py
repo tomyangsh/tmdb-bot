@@ -5,7 +5,7 @@ from io import BytesIO
 from datetime import date
 
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultPhoto, InlineQueryResultArticle, InputTextMessageContent
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent
 
 from country_list import countries_for_language
 
@@ -189,10 +189,29 @@ cur = conn.cursor()
 
 bot = Client('bot')
 
-@bot.on_message(filters.command('start'))
+@bot.on_message(filters.regex("^/start$"))
 def welcome(client, message):
     text = '请直接发送电影、电视剧标题及演员、导演姓名进行搜索，也可以发送以`tt`开头的IMDB编号检索电影信息'
     bot.send_message(message.chat.id, text)
+
+@bot.on_message(filters.regex("^/start\s.+"))
+def answer_parameter(client, message):
+    match = re.search(r'([a-z]+)(\d+)', message.text)
+    cat = match.group(1)
+    tmdb_id = match.group(2)
+    dic = build_msg(cat, tmdb_id)
+    img = 'https://oracle.tomyangsh.pw/img'+dic.get('img')
+    text = dic.get('text')
+    yt_key = dic.get('yt_key')
+    button = []
+    yt_url = 'https://www.youtube.com/watch?v='
+    if yt_key:
+        button.append(InlineKeyboardButton("预告片", callback_data=yt_key))
+    reply_markup = InlineKeyboardMarkup([button]) if button else None
+    if dic.get('img'):
+        bot.send_photo(message.chat.id, img, caption=text, reply_markup=reply_markup)
+    else:
+        bot.send_message(message.chat.id, text, reply_markup=reply_markup)
 
 @bot.on_message(filters.regex("^tt\d+$"))
 def imdb_lookup(client, message):
@@ -308,6 +327,28 @@ def send_trailer(client, callback_query):
     bot.delete_messages(callback_query.message.chat.id, sending.message_id)
     bot.answer_callback_query(callback_query.id)
     os.unlink(video_name)
+
+@bot.on_inline_query()
+def answer(client, inline_query):
+    if not inline_query.query:
+        request_url = "https://api.themoviedb.org/3/discover/movie?api_key={}&language=zh-CN".format(tmdb_key)
+    else:
+        keyword = inline_query.query
+        request_url = "https://api.themoviedb.org/3/search/multi?api_key={}&language=zh-CN&query={}".format(tmdb_key, keyword)
+    res = requests.get(request_url).json()["results"]
+    results=[]
+    for i in res[:10]:
+        cat = i.get("media_type") or "movie"
+        date = i.get('release_date') or i.get('first_air_date') or ''
+        img = 'https://oracle.tomyangsh.pw/img{}'.format(i.get("poster_path") or i.get("profile_path", '/'))
+        title = '{} {}'.format(i.get("title") or i.get("name"), i.get("original_name") or i.get("original_title") or '')
+        title += ' ({})'.format('' if cat == 'person' else date[:4]) if date else ''
+        description = i.get("overview", '')
+        tmdb_id = str(i.get("id"))
+        url = 'https://www.themoviedb.org/{}/{}?language=zh-CN'.format(cat, tmdb_id)
+        button = InlineKeyboardButton("更多信息", url='https://t.me/tmdbzh_bot?start='+cat+tmdb_id)
+        results.append(InlineQueryResultArticle(title=title, description=description, input_message_content=InputTextMessageContent(title+'\n'+url), thumb_url=img, reply_markup=InlineKeyboardMarkup([[button]])))
+    inline_query.answer(results=results)
 
 def get_rarbg():
     guid = open('/root/tmdb-bot/guid', "r").read()

@@ -5,3 +5,4 @@ country_list
 pyrogram
 chinese_converter
 psycopg2
+ffmpeg-python
