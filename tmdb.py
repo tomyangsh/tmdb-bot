@@ -189,9 +189,12 @@ cur = conn.cursor()
 
 bot = Client('bot')
 
-@bot.on_message(filters.regex("^/start$"))
+@bot.on_message(filters.regex("^/start$|^/start@"))
 def welcome(client, message):
-    text = '请直接发送电影、电视剧标题及演员、导演姓名进行搜索，也可以发送以`tt`开头的IMDB编号检索电影信息'
+    if message.chat.type == "private":
+        text = '请直接发送电影、电视剧标题及演员、导演姓名进行搜索，也可以发送以`tt`开头的IMDB编号检索电影信息'
+    else:
+        text = '请输入 `@tmdbzh_bot 关键字` 进行inline mode搜索'
     bot.send_message(message.chat.id, text)
 
 @bot.on_message(filters.regex("^/start\s.+"))
