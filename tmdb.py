@@ -213,19 +213,31 @@ def answer_parameter(client, message):
     else:
         bot.send_message(message.chat.id, text, reply_markup=reply_markup)
 
-@bot.on_message(filters.regex("^tt\d+$"))
+@bot.on_message(filters.regex("^tt\d+$") | filters.regex("/\w+/\d+\?language=zh-CN"))
 def imdb_lookup(client, message):
     bot.send_chat_action(message.chat.id, "typing")
-    dic = build_msg('movie', message.text)
+    if re.match('tt\d+', message.text):
+        cat = 'movie'
+        tmdb_id = message.text
+    else:
+        search = re.search(r'/(\w+)/(\d+)\?language=zh-CN', message.text)
+        cat = search.group(1)
+        tmdb_id = search.group(2)
+    dic = build_msg(cat, tmdb_id)
     if not dic:
-        bot.send_message(message.chat.id, 'imdb编号有误')
         return
     img = 'https://oracle.tomyangsh.pw/img'+dic.get('img')
     text = dic.get('text')
+    yt_url = 'https://www.youtube.com/watch?v='
     yt_key = dic.get('yt_key')
     button = []
     if yt_key:
-        button.append(InlineKeyboardButton("预告片", callback_data=yt_key))
+        if message.chat.type == "private":
+            button.append(InlineKeyboardButton("预告片", callback_data=yt_key))
+        else:
+            button.append(InlineKeyboardButton("预告片", url=yt_url+yt_key))
+    if dic.get('gdrive_key') and message.chat.id in (-1001345466016, -1001310480238):
+        button.append(InlineKeyboardButton("团队盘链接", url='https://drive.google.com/file/d/'+dic.get('gdrive_key')))
     reply_markup = InlineKeyboardMarkup([button]) if button else None
     if img:
         bot.send_photo(message.chat.id, img, caption=text, reply_markup=reply_markup)
@@ -233,9 +245,7 @@ def imdb_lookup(client, message):
         bot.send_message(message.chat.id, text, reply_markup=reply_markup)
 
 def s_filter(_, __, message):
-    if re.match(r'/tmdb.*\s+\w+', message.text):
-        return True
-    elif (message.chat.type == "private") and (re.match(r'/', message.text) == None):
+    if (message.chat.type == "private") and (re.match(r'/top|/update|出题', message.text) == None):
         return True
     else:
         return False
@@ -246,27 +256,20 @@ search_filter = filters.create(s_filter)
 def send_search_result(client, message):
     extra = []
     bot.send_chat_action(message.chat.id, "typing")
-    if re.match(r'/tmdb', message.text):
-        query = re.search(r'\s+(.+)', message.text).group(1)
-    elif re.search(r'/\w+/\d+\?language=zh-CN', message.text):
-        search = re.search(r'/(\w+)/(\d+)\?language=zh-CN', message.text)
-        cat = search.group(1)
-        tmdb_id = search.group(2)
+    query = message.text
+    cur.execute("SELECT tmdb_id FROM person WHERE zh_name = %s;", [query])
+    if cur.rowcount == 1:
+        tmdb_id = cur.fetchone()[0]
+        cat = 'person'
     else:
-        query = message.text
-        cur.execute("SELECT tmdb_id FROM person WHERE zh_name = %s;", [query])
-        if cur.rowcount == 1:
-            tmdb_id = cur.fetchone()[0]
-            cat = 'person'
-        else:
-            request_url = "https://api.themoviedb.org/3/search/multi?api_key={}&language=zh-CN&query={}"
-            res = requests.get(request_url.format(tmdb_key, query)).json().get('results') or requests.get(request_url.format(tmdb_key, chinese_converter.to_simplified(query))).json().get('results')
-            if not res:
-                bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
-                return None
-            tmdb_id = res[0].get('id')
-            cat = res[0]["media_type"]
-            extra = res[1:5]
+        request_url = "https://api.themoviedb.org/3/search/multi?api_key={}&language=zh-CN&query={}"
+        res = requests.get(request_url.format(tmdb_key, query)).json().get('results') or requests.get(request_url.format(tmdb_key, chinese_converter.to_simplified(query))).json().get('results')
+        if not res:
+            bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
+            return None
+        tmdb_id = res[0].get('id')
+        cat = res[0]["media_type"]
+        extra = res[1:5]
     dic = build_msg(cat, tmdb_id)
     img = 'https://oracle.tomyangsh.pw/img'+dic.get('img')
     text = dic.get('text')
@@ -278,8 +281,6 @@ def send_search_result(client, message):
             buttonlist.append([InlineKeyboardButton("预告片", callback_data=yt_key)])
         else:
             buttonlist.append([InlineKeyboardButton("预告片", url=yt_url+yt_key)])
-    if dic.get('gdrive_key') and message.chat.id in (-1001345466016, -1001310480238):
-        buttonlist.append([InlineKeyboardButton("团队盘链接", url='https://drive.google.com/file/d/'+dic.get('gdrive_key'))])
     if extra:
         for i in extra:
             name = '{} {}'.format(i.get("title") or i.get("name"), i.get("release_date", '')[:4] or i.get("first_air_date", '')[:4] or '')
