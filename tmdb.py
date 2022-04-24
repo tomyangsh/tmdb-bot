@@ -193,9 +193,11 @@ bot = Client('bot')
 async def welcome(client, message):
     if message.chat.type == enums.ChatType.PRIVATE:
         text = '请直接发送电影、电视剧标题及演员、导演姓名进行搜索，也可以发送以`tt`开头的IMDB编号检索电影信息'
+        await bot.send_message(message.chat.id, text)
     else:
+        img = "assets/group_help.png"
         text = '请输入 `@tmdbzh_bot 关键字` 进行inline mode搜索'
-    await bot.send_message(message.chat.id, text)
+        await bot.send_photo(message.chat.id, img, caption=text)
 
 @bot.on_message(filters.regex("^/start\s.+"))
 async def answer_parameter(client, message):
