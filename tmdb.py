@@ -244,25 +244,29 @@ search_filter = filters.create(s_filter)
 
 @bot.on_message(filters.text & search_filter)
 def send_search_result(client, message):
+    extra = []
+    bot.send_chat_action(message.chat.id, "typing")
     if re.match(r'/tmdb', message.text):
         query = re.search(r'\s+(.+)', message.text).group(1)
+    elif re.search(r'/\w+/\d+\?language=zh-CN', message.text):
+        search = re.search(r'/(\w+)/(\d+)\?language=zh-CN', message.text)
+        cat = search.group(1)
+        tmdb_id = search.group(2)
     else:
         query = message.text
-    bot.send_chat_action(message.chat.id, "typing")
-    extra = []
-    cur.execute("SELECT tmdb_id FROM person WHERE zh_name = %s;", [query])
-    tmdb_id = cur.fetchone()[0] if cur.rowcount == 1 else None
-    if not tmdb_id:
-        request_url = "https://api.themoviedb.org/3/search/multi?api_key={}&language=zh-CN&query={}"
-        res = requests.get(request_url.format(tmdb_key, query)).json().get('results') or requests.get(request_url.format(tmdb_key, chinese_converter.to_simplified(query))).json().get('results')
-        if not res:
-            bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
-            return None
-        tmdb_id = res[0].get('id')
-        cat = res[0]["media_type"]
-        extra = res[1:5]
-    else:
-        cat = 'person'
+        cur.execute("SELECT tmdb_id FROM person WHERE zh_name = %s;", [query])
+        if cur.rowcount == 1:
+            tmdb_id = cur.fetchone()[0]
+            cat = 'person'
+        else:
+            request_url = "https://api.themoviedb.org/3/search/multi?api_key={}&language=zh-CN&query={}"
+            res = requests.get(request_url.format(tmdb_key, query)).json().get('results') or requests.get(request_url.format(tmdb_key, chinese_converter.to_simplified(query))).json().get('results')
+            if not res:
+                bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
+                return None
+            tmdb_id = res[0].get('id')
+            cat = res[0]["media_type"]
+            extra = res[1:5]
     dic = build_msg(cat, tmdb_id)
     img = 'https://oracle.tomyangsh.pw/img'+dic.get('img')
     text = dic.get('text')
