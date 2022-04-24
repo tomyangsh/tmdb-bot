@@ -349,7 +349,9 @@ async def answer(client, inline_query):
         cat = i.get("media_type") or "movie"
         date = i.get('release_date') or i.get('first_air_date') or ''
         img = 'https://oracle.tomyangsh.pw/img{}'.format(i.get("poster_path") or i.get("profile_path", '/'))
-        title = '{} {}'.format(i.get("title") or i.get("name"), i.get("original_name") or i.get("original_title") or '')
+        zh_name = i.get("title") or i.get("name")
+        ori_name = i.get("original_name") or i.get("name") or i.get("original_title")
+        title = '{} {}'.format(zh_name if zh_name != ori_name else '', ori_name)
         title += ' ({})'.format('' if cat == 'person' else date[:4]) if date else ''
         description = i.get("overview", '')
         tmdb_id = str(i.get("id"))
