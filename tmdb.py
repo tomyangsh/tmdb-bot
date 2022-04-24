@@ -1,10 +1,10 @@
-import requests, re, psycopg2, os, ffmpeg, random, feedparser, aiocron, chinese_converter
+import requests, re, psycopg2, os, ffmpeg, random, feedparser, asyncio, aiocron, chinese_converter
 
 from io import BytesIO
 
 from datetime import date
 
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent
 
 from country_list import countries_for_language
@@ -64,7 +64,7 @@ def get_digital_date(tmdb_id):
         return None
     return digital_date
 
-def get_zh_name(tmdb_id):
+async def get_zh_name(tmdb_id):
     if not tmdb_id:
         return None
     cur.execute("SELECT zh_name FROM person WHERE tmdb_id = %s;", [tmdb_id])
@@ -84,7 +84,7 @@ def get_zh_name(tmdb_id):
             conn.commit()
             return name
 
-def get_gdrive_key(tmdb_id):
+async def get_gdrive_key(tmdb_id):
     cur.execute("SELECT gdrive_key FROM gdrive_key WHERE tmdb_id = %s;", [tmdb_id])
     try:
         return cur.fetchone()[0]
@@ -114,14 +114,14 @@ def get_thumbnail(video_path):
         )
     return thumbnail
 
-def build_msg(cat, tmdb_id):
+async def build_msg(cat, tmdb_id):
     request_url = 'https://api.themoviedb.org/3/{}/{}?append_to_response=credits,alternative_titles,external_ids,combined_credits,videos&api_key={}&include_image_language=en,null&include_video_language=en&language=zh-CN'.format(cat, tmdb_id, tmdb_key)
     res = requests.get(request_url).json()
     if not res.get('id'):
         return None
     tmdb_id = res.get('id')
     if cat == 'person':
-        zh_name = get_zh_name(tmdb_id)
+        zh_name = await get_zh_name(tmdb_id)
     else:
         zh_name = res.get('title', res.get('name', ''))
     name = res.get('original_title') or res.get('original_name') or res.get('name')
@@ -133,10 +133,10 @@ def build_msg(cat, tmdb_id):
         date = res.get('release_date') or res.get('first_air_date') or ''
         genres = ['#'+(genres_dic.get(i.get('name')) or i.get('name')) for i in res.get('genres', [])]
         director_info = next((item for item in res.get('credits', {}).get('crew', []) if item.get('job') == 'Director'), {})
-        director_name = get_zh_name(director_info.get('id')) or director_info.get('name', '')
+        director_name = await get_zh_name(director_info.get('id')) or director_info.get('name', '')
         creator_info = next((item for item in res.get('created_by', [])), {})
-        creator_name = get_zh_name(creator_info.get('id')) or creator_info.get('name', '')
-        cast = [get_zh_name(item.get('id')) or item.get('name') for item in res.get('credits', {}).get('cast', [])[:6]]
+        creator_name = await get_zh_name(creator_info.get('id')) or creator_info.get('name', '')
+        cast = [await get_zh_name(item.get('id')) or item.get('name') for item in res.get('credits', {}).get('cast', [])[:6]]
         yt_key = next((i.get('key') for i in res.get('videos').get('results') if i.get('type') == "Trailer" and i.get('site') == "YouTube"), '')
         if cat == 'tv':
             season_info = ['第{}季 ({}) - 共{}集'.format(item.get('season_number'), '202X' if not item.get('air_date') else item.get('air_date')[:4], item.get('episode_count')) for item in res.get('seasons', []) if not item.get('season_number') == 0]
@@ -179,7 +179,7 @@ def build_msg(cat, tmdb_id):
             'name': '{} {}'.format(zh_name, name) if not zh_name == name else name,
             'img': res.get('poster_path') or res.get('profile_path') or '',
             'yt_key': '' if cat == 'person' or not yt_key else yt_key,
-            'gdrive_key': get_gdrive_key(tmdb_id),
+            'gdrive_key': await get_gdrive_key(tmdb_id),
             'text': re.sub(r'\n\w+\s\n', r'\n', text),
             }
     return dic
@@ -190,19 +190,19 @@ cur = conn.cursor()
 bot = Client('bot')
 
 @bot.on_message(filters.regex("^/start$|^/start@"))
-def welcome(client, message):
-    if message.chat.type == "private":
+async def welcome(client, message):
+    if message.chat.type == enums.ChatType.PRIVATE:
         text = '请直接发送电影、电视剧标题及演员、导演姓名进行搜索，也可以发送以`tt`开头的IMDB编号检索电影信息'
     else:
         text = '请输入 `@tmdbzh_bot 关键字` 进行inline mode搜索'
-    bot.send_message(message.chat.id, text)
+    await bot.send_message(message.chat.id, text)
 
 @bot.on_message(filters.regex("^/start\s.+"))
-def answer_parameter(client, message):
+async def answer_parameter(client, message):
     match = re.search(r'([a-z]+)(\d+)', message.text)
     cat = match.group(1)
     tmdb_id = match.group(2)
-    dic = build_msg(cat, tmdb_id)
+    dic = await build_msg(cat, tmdb_id)
     img = 'https://oracle.tomyangsh.pw/img'+dic.get('img')
     text = dic.get('text')
     yt_key = dic.get('yt_key')
@@ -212,13 +212,13 @@ def answer_parameter(client, message):
         button.append(InlineKeyboardButton("预告片", callback_data=yt_key))
     reply_markup = InlineKeyboardMarkup([button]) if button else None
     if dic.get('img'):
-        bot.send_photo(message.chat.id, img, caption=text, reply_markup=reply_markup)
+        await bot.send_photo(message.chat.id, img, caption=text, reply_markup=reply_markup)
     else:
-        bot.send_message(message.chat.id, text, reply_markup=reply_markup)
+        await bot.send_message(message.chat.id, text, reply_markup=reply_markup)
 
 @bot.on_message(filters.regex("^tt\d+$") | filters.regex("/\w+/\d+\?language=zh-CN"))
-def imdb_lookup(client, message):
-    bot.send_chat_action(message.chat.id, "typing")
+async def imdb_lookup(client, message):
+    await bot.send_chat_action(message.chat.id, enums.ChatAction.TYPING)
     if re.match('tt\d+', message.text):
         cat = 'movie'
         tmdb_id = message.text
@@ -226,7 +226,7 @@ def imdb_lookup(client, message):
         search = re.search(r'/(\w+)/(\d+)\?language=zh-CN', message.text)
         cat = search.group(1)
         tmdb_id = search.group(2)
-    dic = build_msg(cat, tmdb_id)
+    dic = await build_msg(cat, tmdb_id)
     if not dic:
         return
     img = 'https://oracle.tomyangsh.pw/img'+dic.get('img')
@@ -235,7 +235,7 @@ def imdb_lookup(client, message):
     yt_key = dic.get('yt_key')
     button = []
     if yt_key:
-        if message.chat.type == "private":
+        if message.chat.type == enums.ChatType.PRIVATE:
             button.append(InlineKeyboardButton("预告片", callback_data=yt_key))
         else:
             button.append(InlineKeyboardButton("预告片", url=yt_url+yt_key))
@@ -243,12 +243,12 @@ def imdb_lookup(client, message):
         button.append(InlineKeyboardButton("团队盘链接", url='https://drive.google.com/file/d/'+dic.get('gdrive_key')))
     reply_markup = InlineKeyboardMarkup([button]) if button else None
     if img:
-        bot.send_photo(message.chat.id, img, caption=text, reply_markup=reply_markup)
+        await bot.send_photo(message.chat.id, img, caption=text, reply_markup=reply_markup)
     else:
-        bot.send_message(message.chat.id, text, reply_markup=reply_markup)
+        await bot.send_message(message.chat.id, text, reply_markup=reply_markup)
 
 def s_filter(_, __, message):
-    if (message.chat.type == "private") and (re.match(r'/top|/update|出题', message.text) == None):
+    if (message.chat.type == enums.ChatType.PRIVATE) and (re.match(r'/top|/update|出题', message.text) == None):
         return True
     else:
         return False
@@ -256,9 +256,9 @@ def s_filter(_, __, message):
 search_filter = filters.create(s_filter)
 
 @bot.on_message(filters.text & search_filter)
-def send_search_result(client, message):
+async def send_search_result(client, message):
     extra = []
-    bot.send_chat_action(message.chat.id, "typing")
+    await bot.send_chat_action(message.chat.id, enums.ChatAction.TYPING)
     query = message.text
     cur.execute("SELECT tmdb_id FROM person WHERE zh_name = %s;", [query])
     if cur.rowcount == 1:
@@ -268,19 +268,19 @@ def send_search_result(client, message):
         request_url = "https://api.themoviedb.org/3/search/multi?api_key={}&language=zh-CN&query={}"
         res = requests.get(request_url.format(tmdb_key, query)).json().get('results') or requests.get(request_url.format(tmdb_key, chinese_converter.to_simplified(query))).json().get('results')
         if not res:
-            bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
+            await bot.send_message(message.chat.id, '好像没搜到，换个名字试试')
             return None
         tmdb_id = res[0].get('id')
         cat = res[0]["media_type"]
         extra = res[1:5]
-    dic = build_msg(cat, tmdb_id)
+    dic = await build_msg(cat, tmdb_id)
     img = 'https://oracle.tomyangsh.pw/img'+dic.get('img')
     text = dic.get('text')
     yt_key = dic.get('yt_key')
     buttonlist = []
     yt_url = 'https://www.youtube.com/watch?v='
     if yt_key:
-        if message.chat.type == "private":
+        if message.chat.type == enums.ChatType.PRIVATE:
             buttonlist.append([InlineKeyboardButton("预告片", callback_data=yt_key)])
         else:
             buttonlist.append([InlineKeyboardButton("预告片", url=yt_url+yt_key)])
@@ -292,24 +292,24 @@ def send_search_result(client, message):
             buttonlist.append([InlineKeyboardButton(name, callback_data=cat+tmdb_id)])
     reply_markup = InlineKeyboardMarkup(buttonlist) if buttonlist else None
     if dic.get('img'):
-        bot.send_photo(message.chat.id, img, caption=text, reply_markup=reply_markup)
+        await bot.send_photo(message.chat.id, img, caption=text, reply_markup=reply_markup)
     else:
-        bot.send_message(message.chat.id, text, reply_markup=reply_markup)
+        await bot.send_message(message.chat.id, text, reply_markup=reply_markup)
 
 @bot.on_callback_query(filters.regex(r'^[a-z]+\d+$'))
-def send_callback_result(client, callback_query):
-    bot.send_chat_action(callback_query.message.chat.id, "typing")
+async def send_callback_result(client, callback_query):
+    await bot.send_chat_action(callback_query.message.chat.id, enums.ChatAction.TYPING)
     match = re.match(r'([a-z]+)(\d+)', callback_query.data)
     cat = match.group(1)
     tmdb_id = match.group(2)
-    dic = build_msg(cat, tmdb_id)
+    dic = await build_msg(cat, tmdb_id)
     img = 'https://oracle.tomyangsh.pw/img'+dic.get('img')
     text = dic.get('text')
     yt_key = dic.get('yt_key')
     button = []
     yt_url = 'https://www.youtube.com/watch?v='
     if yt_key:
-        if callback_query.message.chat.type == "private":
+        if callback_query.message.chat.type == enums.ChatType.PRIVATE:
             button.append(InlineKeyboardButton("预告片", callback_data=yt_key))
         else:
             button.append(InlineKeyboardButton("预告片", url=yt_url+yt_key))
@@ -317,27 +317,27 @@ def send_callback_result(client, callback_query):
         button.append(InlineKeyboardButton("团队盘链接", url='https://drive.google.com/file/d/'+dic.get('gdrive_key')))
     reply_markup = InlineKeyboardMarkup([button]) if button else None
     if dic.get('img'):
-        bot.send_photo(callback_query.message.chat.id, img, caption=text, reply_markup=reply_markup)
+        await bot.send_photo(callback_query.message.chat.id, img, caption=text, reply_markup=reply_markup)
     else:
-        bot.send_message(callback_query.message.chat.id, text, reply_markup=reply_markup)
-    bot.answer_callback_query(callback_query.id)
+        await bot.send_message(callback_query.message.chat.id, text, reply_markup=reply_markup)
+    await bot.answer_callback_query(callback_query.id)
 
 @bot.on_callback_query(~filters.regex(r'^False$') & filters.regex(r'\D'))
-def send_trailer(client, callback_query):
-    sending = bot.send_message(callback_query.message.chat.id, "发送中。。。")
+async def send_trailer(client, callback_query):
+    sending = await bot.send_message(callback_query.message.chat.id, "发送中。。。")
     yt_url = 'https://www.youtube.com/watch?v={}'
     YoutubeDL({"format": "bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/best[vcodec^=avc]/best", "outtmpl": "%(id)s.mp4", "quiet": True}).download(yt_url.format(callback_query.data))
-    bot.send_chat_action(callback_query.message.chat.id, "upload_video")
+    await bot.send_chat_action(callback_query.message.chat.id, enums.ChatAction.UPLOAD_VIDEO)
     video_name = callback_query.data+'.mp4'
     meta = get_metadata(video_name)
     thumbnail = get_thumbnail(video_name)
-    bot.send_video(callback_query.message.chat.id, video_name, thumb=thumbnail, **meta)
-    bot.delete_messages(callback_query.message.chat.id, sending.message_id)
-    bot.answer_callback_query(callback_query.id)
+    await bot.send_video(callback_query.message.chat.id, video_name, thumb=thumbnail, **meta)
+    await bot.delete_messages(callback_query.message.chat.id, sending.id)
+    await bot.answer_callback_query(callback_query.id)
     os.unlink(video_name)
 
 @bot.on_inline_query()
-def answer(client, inline_query):
+async def answer(client, inline_query):
     if not inline_query.query:
         request_url = "https://api.themoviedb.org/3/discover/movie?api_key={}&language=zh-CN".format(tmdb_key)
     else:
@@ -356,7 +356,7 @@ def answer(client, inline_query):
         url = 'https://www.themoviedb.org/{}/{}?language=zh-CN'.format(cat, tmdb_id)
         button = InlineKeyboardButton("更多信息", url='https://t.me/tmdbzh_bot?start='+cat+tmdb_id)
         results.append(InlineQueryResultArticle(title=title, description=description, input_message_content=InputTextMessageContent(title+'\n'+url), thumb_url=img, reply_markup=InlineKeyboardMarkup([[button]])))
-    inline_query.answer(results=results)
+    await inline_query.answer(results=results)
 
 def get_rarbg():
     guid = open('/root/tmdb-bot/guid', "r").read()
@@ -412,7 +412,7 @@ async def push_rarbg():
 async def push_trakt():
     id_list = get_trakt()
     for tmdb_id in id_list:
-        dic = build_msg('movie', tmdb_id)
+        dic = await build_msg('movie', tmdb_id)
         img = 'https://oracle.tomyangsh.pw/img'+dic.get('img')
         info = '团队盘新增影片： `'+tmdb_id+'`\n'
         info += dic.get('text')
@@ -430,26 +430,26 @@ async def push_trakt():
         conn.commit()
 
 @bot.on_message(filters.command('update'))
-def update_gdrive_key(client, message):
+async def update_gdrive_key(client, message):
     msg = message.text
     match = re.match(r'/update\s+(\d+)\s+(.+)', msg)
     if match:
         cur.execute("UPDATE gdrive_key SET gdrive_key = %s WHERE tmdb_id = %s;", (match.group(2), match.group(1)))
         if cur.rowcount != 0:
             conn.commit()
-            bot.send_message(message.chat.id, '['+match.group(1)+'](https://www.themoviedb.org/movie/'+match.group(1)+')\nhttps://drive.google.com/file/d/'+match.group(2))
+            await bot.send_message(message.chat.id, '['+match.group(1)+'](https://www.themoviedb.org/movie/'+match.group(1)+')\nhttps://drive.google.com/file/d/'+match.group(2))
 
 @bot.on_message(filters.command('top'))
-def credit_top10(client, message):
+async def credit_top10(client, message):
     cur.execute("SELECT name, credit FROM user_info ORDER BY credit DESC LIMIT 10;")
     list = cur.fetchall()
     result = '答题得分榜:\n\n'
     for i in list:
         result += str(i[1])+'    '+i[0]+'\n'
-    bot.send_message(message.chat.id, result)
+    await bot.send_message(message.chat.id, result)
 
 @bot.on_message(filters.regex("^出题$|^出題$"))
-def quiz(client, message):
+async def quiz(client, message):
     global quiz_on
     if quiz_on:
         return
@@ -470,10 +470,10 @@ def quiz(client, message):
     if backdrop:
         img = 'https://oracle.tomyangsh.pw/img{}'.format(backdrop)
     else:
-        bot.send_message(message.chat.id, "出题失败。。")
+        await bot.send_message(message.chat.id, "出题失败。。")
         return
-    bot.send_chat_action(message.chat.id, "typing")
-    bot.send_photo(message.chat.id, img, caption='这部影片的标题是:', reply_markup=InlineKeyboardMarkup([
+    await bot.send_chat_action(message.chat.id, enums.ChatAction.TYPING)
+    await bot.send_photo(message.chat.id, img, caption='这部影片的标题是:', reply_markup=InlineKeyboardMarkup([
         [
             InlineKeyboardButton(list[0]["zh_title"], callback_data=list[0]["callback_data"]),
             InlineKeyboardButton(list[1]["zh_title"], callback_data=list[1]["callback_data"])
@@ -488,8 +488,8 @@ def quiz(client, message):
     quiz_on = True
 
 @bot.on_callback_query(filters.regex(r'^False$'))
-def choice_wrong(client, callback_query):
-    bot.answer_callback_query(callback_query.id, text='错了，菜鸡！', show_alert=True)
+async def choice_wrong(client, callback_query):
+    await bot.answer_callback_query(callback_query.id, text='错了，菜鸡！', show_alert=True)
     cur.execute("SELECT credit FROM user_info WHERE id = %s;", [callback_query.from_user.id])
     credit = cur.fetchone()[0]
     try:
@@ -505,13 +505,13 @@ def choice_wrong(client, callback_query):
         conn.commit()
 
 @bot.on_callback_query(filters.regex(r'^\d+'))
-def choice_correct(client, callback_query):
+async def choice_correct(client, callback_query):
     cur.execute("SELECT zh_title, ori_title, year FROM idlist WHERE tmdb_id = %s;", [int(callback_query.data)])
     res = cur.fetchone()
-    bot.edit_message_text(callback_query.message.chat.id, callback_query.message.message_id, '{} 回答正确！\n**{}{} ({})** [链接](https://www.themoviedb.org/movie/{})'.format(callback_query.from_user.first_name, res[0]+' ' if not res[0] == res[1] else '', res[1], res[2], callback_query.data))
+    await bot.edit_message_text(callback_query.message.chat.id, callback_query.message.id, '{} 回答正确！\n**{}{} ({})** [链接](https://www.themoviedb.org/movie/{})'.format(callback_query.from_user.first_name, res[0]+' ' if not res[0] == res[1] else '', res[1], res[2], callback_query.data))
     global quiz_on
     quiz_on = False
-    bot.answer_callback_query(callback_query.id)
+    await bot.answer_callback_query(callback_query.id)
     try:
         cur.execute("UPDATE user_info SET credit = credit+1 WHERE id = %s;", [callback_query.from_user.id])
         conn.commit()
