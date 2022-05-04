@@ -138,7 +138,10 @@ async def build_msg(cat, tmdb_id):
         creator_name = await get_zh_name(creator_info.get('id')) or creator_info.get('name', '')
         cast = [await get_zh_name(item.get('id')) or item.get('name') for item in res.get('credits', {}).get('cast', [])[:6]]
         yt_key = next((i.get('key') for i in res.get('videos').get('results') if i.get('type') == "Trailer" and i.get('site') == "YouTube"), '')
+        nextep = ''
         if cat == 'tv':
+            if res.get('next_episode_to_air'):
+                nextep = 'S{:02d}E{:02d} {}'.format(res.get('next_episode_to_air', {}).get('season_number'), res.get('next_episode_to_air', {}).get('episode_number'), res.get('next_episode_to_air', {}).get('air_date'))
             season_info = ['第{}季 ({}) - 共{}集'.format(item.get('season_number'), '202X' if not item.get('air_date') else item.get('air_date')[:4], item.get('episode_count')) for item in res.get('seasons', []) if not item.get('season_number') == 0]
     birthday = res.get('birthday', '')
     deathday = res.get('deathday', '')
@@ -155,6 +158,7 @@ async def build_msg(cat, tmdb_id):
         d_works = ['{} - {}'.format(get_year(item), item.get('name', item.get('title'))) for item in d_credits_fixed[:10] if get_year(item)]
     text = '{} {}'.format(zh_name, name) if not zh_name == name else name
     text += ' ({})'.format('' if cat == 'person' else date[:4]) if date else ''
+    text += '\n**下一集：{}**'.format(nextep) if nextep else ''
     text += '\n\n{}\n'.format(res.get('overview', '')) if res.get('overview') else ''
     text += '\n导演 {}'.format(director_name) if cat == 'movie' else ''
     text += '\n主创 {}'.format(creator_name) if cat == 'tv' else ''
