@@ -129,6 +129,7 @@ async def build_msg(cat, tmdb_id):
     season_info = []
     yt_key = ''
     date = ''
+    nextep = ''
     if cat == 'movie' or cat == 'tv':
         date = res.get('release_date') or res.get('first_air_date') or ''
         genres = ['#'+(genres_dic.get(i.get('name')) or i.get('name')) for i in res.get('genres', [])]
@@ -138,7 +139,6 @@ async def build_msg(cat, tmdb_id):
         creator_name = await get_zh_name(creator_info.get('id')) or creator_info.get('name', '')
         cast = [await get_zh_name(item.get('id')) or item.get('name') for item in res.get('credits', {}).get('cast', [])[:6]]
         yt_key = next((i.get('key') for i in res.get('videos').get('results') if i.get('type') == "Trailer" and i.get('site') == "YouTube"), '')
-        nextep = ''
         if cat == 'tv':
             if res.get('next_episode_to_air'):
                 nextep = 'S{:02d}E{:02d} {}'.format(res.get('next_episode_to_air', {}).get('season_number'), res.get('next_episode_to_air', {}).get('episode_number'), res.get('next_episode_to_air', {}).get('air_date'))
